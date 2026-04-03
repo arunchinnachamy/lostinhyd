@@ -1,229 +1,115 @@
-import postgres from 'postgres';
+// Database utilities with Cloudflare Workers compatibility
+// Note: Using mock data since postgres library doesn't work in Cloudflare Workers
 
-// Database URL must be set via environment variable
-const DATABASE_URL = import.meta.env.DATABASE_URL || process.env.DATABASE_URL;
-
-// Check if we have a database URL
-const hasDatabase = !!DATABASE_URL;
-
-// Create postgres client (only if URL is available)
-export function createClient() {
-  if (!DATABASE_URL) {
-    throw new Error('DATABASE_URL environment variable is required');
-  }
-  
-  return postgres(DATABASE_URL, {
-    ssl: 'require',
-    connect_timeout: 30,
-    idle_timeout: 20,
-    max_lifetime: 60 * 30,
-  });
-}
-
-// Mock data for when database is not available
+// Mock data for categories
 const mockCategories = [
-  { id: 1, name: 'Music', slug: 'music', event_count: 0 },
-  { id: 2, name: 'Food & Drink', slug: 'food-drink', event_count: 0 },
-  { id: 3, name: 'Arts & Culture', slug: 'arts-culture', event_count: 0 },
-  { id: 4, name: 'Tech', slug: 'tech', event_count: 0 },
-  { id: 5, name: 'Sports', slug: 'sports', event_count: 0 },
+  { id: 1, name: 'Music', slug: 'music', description: 'Concerts and live music', event_count: 0, display_order: 1, is_active: true },
+  { id: 2, name: 'Food & Drink', slug: 'food-drink', description: 'Food festivals and tastings', event_count: 0, display_order: 2, is_active: true },
+  { id: 3, name: 'Arts & Culture', slug: 'arts-culture', description: 'Art exhibitions and cultural events', event_count: 0, display_order: 3, is_active: true },
+  { id: 4, name: 'Tech', slug: 'tech', description: 'Tech meetups and workshops', event_count: 0, display_order: 4, is_active: true },
+  { id: 5, name: 'Sports', slug: 'sports', description: 'Sports events and fitness', event_count: 0, display_order: 5, is_active: true },
+  { id: 6, name: 'Networking', slug: 'networking', description: 'Professional networking', event_count: 0, display_order: 6, is_active: true },
+  { id: 7, name: 'Comedy', slug: 'comedy', description: 'Stand-up and comedy shows', event_count: 0, display_order: 7, is_active: true },
+  { id: 8, name: 'Movies', slug: 'movies', description: 'Film screenings and cinema', event_count: 0, display_order: 8, is_active: true },
+];
+
+// Mock events data
+const mockEvents = [
+  {
+    id: 1,
+    title: "Weekend Music Festival",
+    slug: "weekend-music-festival",
+    description: "Join us for a weekend of amazing live music performances featuring local and international artists.",
+    start_date: "2026-04-15",
+    start_time: "18:00:00",
+    end_date: "2026-04-17",
+    end_time: "23:00:00",
+    venue_name: "Gachibowli Stadium",
+    area: "Gachibowli",
+    is_free: false,
+    price_min: 500,
+    price_max: 2000,
+    currency: "INR",
+    is_featured: true,
+    image_url: null,
+    categories: ["Music"],
+    status: "published"
+  },
+  {
+    id: 2,
+    title: "Tech Startup Meetup",
+    slug: "tech-startup-meetup",
+    description: "Network with Hyderabad's best tech entrepreneurs and investors. Perfect for startups and developers.",
+    start_date: "2026-04-20",
+    start_time: "19:00:00",
+    end_date: null,
+    end_time: "21:00:00",
+    venue_name: "WeWork Hitech City",
+    area: "Hitech City",
+    is_free: true,
+    price_min: null,
+    price_max: null,
+    currency: "INR",
+    is_featured: true,
+    image_url: null,
+    categories: ["Tech", "Networking"],
+    status: "published"
+  },
+  {
+    id: 3,
+    title: "Food & Wine Tasting",
+    slug: "food-wine-tasting",
+    description: "Experience the finest culinary delights paired with exquisite wines from around the world.",
+    start_date: "2026-04-25",
+    start_time: "17:00:00",
+    end_date: null,
+    end_time: "20:00:00",
+    venue_name: "Park Hyatt Hyderabad",
+    area: "Banjara Hills",
+    is_free: false,
+    price_min: 1500,
+    price_max: 3000,
+    currency: "INR",
+    is_featured: true,
+    image_url: null,
+    categories: ["Food & Drink"],
+    status: "published"
+  }
 ];
 
 // Get all published events
 export async function getEvents(limit = 50, offset = 0) {
-  if (!hasDatabase) return [];
-  
-  const sql = createClient();
-  try {
-    const events = await sql`
-      SELECT 
-        e.*,
-        v.name as venue_name_full,
-        v.area,
-        v.latitude,
-        v.longitude,
-        array_agg(c.name) as categories
-      FROM lostinhyd.events e
-      LEFT JOIN lostinhyd.venues v ON e.venue_id = v.id
-      LEFT JOIN lostinhyd.event_categories ec ON e.id = ec.event_id
-      LEFT JOIN lostinhyd.categories c ON ec.category_id = c.id
-      WHERE e.status = 'published'
-        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
-      GROUP BY e.id, v.name, v.area, v.latitude, v.longitude
-      ORDER BY e.start_date ASC, e.start_time ASC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-    return events;
-  } catch (e) {
-    console.error('Database error:', e);
-    return [];
-  } finally {
-    await sql.end();
-  }
+  return mockEvents.slice(offset, offset + limit);
 }
 
 // Get featured events
 export async function getFeaturedEvents(limit = 6) {
-  if (!hasDatabase) return [];
-  
-  const sql = createClient();
-  try {
-    const events = await sql`
-      SELECT 
-        e.*,
-        v.name as venue_name_full,
-        v.area,
-        array_agg(c.name) as categories
-      FROM lostinhyd.events e
-      LEFT JOIN lostinhyd.venues v ON e.venue_id = v.id
-      LEFT JOIN lostinhyd.event_categories ec ON e.id = ec.event_id
-      LEFT JOIN lostinhyd.categories c ON ec.category_id = c.id
-      WHERE e.status = 'published'
-        AND e.is_featured = true
-        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
-      GROUP BY e.id, v.name, v.area
-      ORDER BY e.start_date ASC
-      LIMIT ${limit}
-    `;
-    return events;
-  } catch (e) {
-    console.error('Database error:', e);
-    return [];
-  } finally {
-    await sql.end();
-  }
+  return mockEvents.filter(e => e.is_featured).slice(0, limit);
 }
 
 // Get single event by slug
 export async function getEventBySlug(slug) {
-  if (!hasDatabase) return null;
-  
-  const sql = createClient();
-  try {
-    const [event] = await sql`
-      SELECT 
-        e.*,
-        v.name as venue_name_full,
-        v.address as venue_address_full,
-        v.area,
-        v.city,
-        v.latitude,
-        v.longitude,
-        v.phone as venue_phone,
-        v.website as venue_website,
-        array_agg(c.name) as categories
-      FROM lostinhyd.events e
-      LEFT JOIN lostinhyd.venues v ON e.venue_id = v.id
-      LEFT JOIN lostinhyd.event_categories ec ON e.id = ec.event_id
-      LEFT JOIN lostinhyd.categories c ON ec.category_id = c.id
-      WHERE e.slug = ${slug}
-        AND e.status = 'published'
-      GROUP BY e.id, v.name, v.address, v.area, v.city, v.latitude, v.longitude, v.phone, v.website
-    `;
-    return event;
-  } catch (e) {
-    console.error('Database error:', e);
-    return null;
-  } finally {
-    await sql.end();
-  }
+  return mockEvents.find(e => e.slug === slug) || null;
 }
 
 // Get all categories
 export async function getCategories() {
-  if (!hasDatabase) return mockCategories;
-  
-  const sql = createClient();
-  try {
-    const categories = await sql`
-      SELECT 
-        c.*,
-        COUNT(e.id) as event_count
-      FROM lostinhyd.categories c
-      LEFT JOIN lostinhyd.event_categories ec ON c.id = ec.category_id
-      LEFT JOIN lostinhyd.events e ON ec.event_id = e.id AND e.status = 'published'
-      WHERE c.is_active = true
-      GROUP BY c.id
-      ORDER BY c.display_order ASC, c.name ASC
-    `;
-    return categories;
-  } catch (e) {
-    console.error('Database error:', e);
-    return mockCategories;
-  } finally {
-    await sql.end();
-  }
+  return mockCategories;
 }
 
 // Get category by slug
 export async function getCategoryBySlug(slug) {
-  if (!hasDatabase) return null;
-  
-  const sql = createClient();
-  try {
-    const [category] = await sql`
-      SELECT * FROM lostinhyd.categories
-      WHERE slug = ${slug} AND is_active = true
-    `;
-    return category;
-  } catch (e) {
-    console.error('Database error:', e);
-    return null;
-  } finally {
-    await sql.end();
-  }
+  return mockCategories.find(c => c.slug === slug) || null;
 }
 
 // Get events by category
 export async function getEventsByCategory(categorySlug, limit = 50) {
-  if (!hasDatabase) return [];
-  
-  const sql = createClient();
-  try {
-    const events = await sql`
-      SELECT 
-        e.*,
-        v.name as venue_name_full,
-        v.area,
-        array_agg(c2.name) as categories
-      FROM lostinhyd.events e
-      INNER JOIN lostinhyd.event_categories ec ON e.id = ec.event_id
-      INNER JOIN lostinhyd.categories c ON ec.category_id = c.id
-      LEFT JOIN lostinhyd.venues v ON e.venue_id = v.id
-      LEFT JOIN lostinhyd.event_categories ec2 ON e.id = ec2.event_id
-      LEFT JOIN lostinhyd.categories c2 ON ec2.category_id = c2.id
-      WHERE c.slug = ${categorySlug}
-        AND e.status = 'published'
-        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
-      GROUP BY e.id, v.name, v.area
-      ORDER BY e.start_date ASC, e.start_time ASC
-      LIMIT ${limit}
-    `;
-    return events;
-  } catch (e) {
-    console.error('Database error:', e);
-    return [];
-  } finally {
-    await sql.end();
-  }
+  return mockEvents.filter(e => 
+    e.categories.some(c => c.toLowerCase().replace(/ & /g, '-').replace(/ /g, '-') === categorySlug)
+  ).slice(0, limit);
 }
 
 // Get all active sources
 export async function getSources() {
-  if (!hasDatabase) return [];
-  
-  const sql = createClient();
-  try {
-    const sources = await sql`
-      SELECT * FROM lostinhyd.sources
-      WHERE is_active = true
-      ORDER BY name ASC
-    `;
-    return sources;
-  } catch (e) {
-    console.error('Database error:', e);
-    return [];
-  } finally {
-    await sql.end();
-  }
+  return [];
 }
