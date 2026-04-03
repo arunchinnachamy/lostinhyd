@@ -45,7 +45,7 @@ class BaseCrawler(ABC):
     
     async def crawl(self, batch_id: str, **kwargs) -> Dict[str, int]:
         """Main crawl method"""
-        self.logger.info(f"Starting crawl for {self.source_name}", batch_id=batch_id)
+        self.logger.info(f"Starting crawl for {self.source_name} [batch={batch_id}]")
         self.stats = {k: 0 for k in self.stats}  # Reset stats
         
         try:
@@ -77,10 +77,10 @@ class BaseCrawler(ABC):
                     self.stats['found'] += 1
                     
                 except Exception as e:
-                    self.logger.error(f"Error parsing event: {e}", raw_data=raw)
+                    self.logger.error(f"Error parsing event: {e} [raw={raw}]")
                     self.stats['errors'] += 1
             
-            self.logger.info(f"Crawl completed", stats=self.stats)
+            self.logger.info(f"Crawl completed: {self.stats}")
             return self.stats
             
         except Exception as e:

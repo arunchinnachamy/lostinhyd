@@ -8,11 +8,11 @@ import re
 from bs4 import BeautifulSoup
 import logging
 
-from ..core.base_crawler import BaseCrawler
-from ..core.http_client import RateLimitedClient
-from ..utils.date_parser import DateParser
-from ..utils.price_parser import PriceParser
-from ..utils.venue_extractor import VenueExtractor
+from core.base_crawler import BaseCrawler
+from core.http_client import RateLimitedClient
+from utils.date_parser import DateParser
+from utils.price_parser import PriceParser
+from utils.venue_extractor import VenueExtractor
 
 logger = logging.getLogger("crawler.sources.bookmyshow")
 

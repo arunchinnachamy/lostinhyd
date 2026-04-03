@@ -7,9 +7,9 @@ import logging
 import re
 from datetime import datetime, date
 
-from ..utils.date_parser import DateParser
-from ..utils.price_parser import PriceParser
-from ..utils.venue_extractor import VenueExtractor
+from utils.date_parser import DateParser
+from utils.price_parser import PriceParser
+from utils.venue_extractor import VenueExtractor
 
 logger = logging.getLogger("crawler.cleaning.data_cleaner")
 

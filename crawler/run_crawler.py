@@ -8,12 +8,11 @@ import argparse
 import logging
 import sys
 import os
-from pathlib import Path
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
+
+# Add crawler to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.data_store import RawDataStore
 from sources.bookmyshow import BookMyShowCrawler

@@ -48,7 +48,7 @@ class RawDataStore:
                 source_name
             )
             batch_id = str(row['id'])
-            self.logger.info(f"Created crawl batch {batch_id}")
+            self.logger.info(f"Created crawl batch: {batch_id}")
             return batch_id
     
     async def store_raw_event(self, event: Dict[str, Any]) -> Optional[int]:
@@ -147,7 +147,7 @@ class RawDataStore:
                         return None
                 
             except Exception as e:
-                self.logger.error(f"Error storing event: {e}", event=event)
+                self.logger.error(f"Error storing event: {e} [event_id={event.get('source_id')}]")
                 raise
     
     async def update_batch_stats(self, batch_id: str, stats: Dict[str, int]):
@@ -175,7 +175,7 @@ class RawDataStore:
                 stats.get('errors', 0),
                 batch_id
             )
-            self.logger.info(f"Updated batch {batch_id} stats", stats=stats)
+            self.logger.info(f"Updated batch {batch_id} stats: {stats}")
     
     async def get_pending_verification(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
