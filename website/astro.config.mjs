@@ -3,7 +3,7 @@ import cloudflare from '@astrojs/cloudflare';
 
 // https://astro.build/config
 export default defineConfig({
-  output: 'hybrid',  // Changed from 'server' to 'hybrid' for static + dynamic
+  output: 'static',  // Use 'static' - prerender=false pages will be server-rendered
   adapter: cloudflare(),
   site: 'https://lostinhyd.pages.dev',
   trailingSlash: 'always',
