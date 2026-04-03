@@ -1,4 +1,6 @@
 ---
+export const prerender = false;  // Server-rendered for database access
+
 import { getCategories } from '../lib/db.js';
 
 const categories = await getCategories();
