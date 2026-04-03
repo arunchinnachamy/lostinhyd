@@ -1,0 +1,136 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import FormattedDate from '../components/FormattedDate.astro';
+import Header from '../components/Header.astro';
+import { AUTHOR } from '../consts';
+
+type Props = CollectionEntry<'newsletter'>['data'];
+
+const { title, description, pubDate, updatedDate, heroImage, keywords = [], category, area } = Astro.props;
+---
+
+<html lang="en">
+	<head>
+		<BaseHead 
+			title={title} 
+			description={description}
+			keywords={keywords}
+			article={true}
+			pubDate={pubDate}
+		/>
+		<style>
+			main {
+				width: calc(100% - 2em);
+				max-width: 100%;
+				margin: 0;
+			}
+			.hero-image {
+				width: 100%;
+			}
+			.hero-image img {
+				display: block;
+				margin: 0 auto;
+				border-radius: 12px;
+				box-shadow: var(--box-shadow);
+			}
+			.prose {
+				width: 720px;
+				max-width: calc(100% - 2em);
+				margin: auto;
+				padding: 1em;
+				color: rgb(var(--gray-dark));
+			}
+			.title {
+				margin-bottom: 1em;
+				padding: 1em 0;
+				text-align: center;
+				line-height: 1;
+			}
+			.title h1 {
+				margin: 0 0 0.5em 0;
+			}
+			.date {
+				margin-bottom: 0.5em;
+				color: rgb(var(--gray));
+			}
+			.last-updated-on {
+				font-style: italic;
+			}
+			.meta-tags {
+				display: flex;
+				gap: 0.5em;
+				justify-content: center;
+				flex-wrap: wrap;
+				margin-top: 1em;
+			}
+			.tag {
+				background: #2c3e50;
+				color: white;
+				padding: 0.25em 0.75em;
+				border-radius: 4px;
+				font-size: 0.8em;
+			}
+			.newsletter-footer {
+				margin-top: 3em;
+				padding: 2em;
+				background: #f8f9fa;
+				border-radius: 12px;
+				text-align: center;
+			}
+			.newsletter-footer h3 {
+				margin-top: 0;
+			}
+			.cta-button {
+				display: inline-block;
+				background: #2c3e50;
+				color: white;
+				padding: 0.75em 1.5em;
+				border-radius: 8px;
+				text-decoration: none;
+				font-weight: bold;
+				margin-top: 1em;
+			}
+		</style>
+	</head>
+
+	<body>
+		<Header />
+		<main>
+			<article>
+				<div class="hero-image">
+					{heroImage && <Image width={1020} height={510} src={heroImage} alt={title} />}
+				</div>
+				<div class="prose">
+					<div class="title">
+						<div class="date">
+							<FormattedDate date={pubDate} />
+							{
+								updatedDate && (
+									<div class="last-updated-on">
+										Last updated on <FormattedDate date={updatedDate} />
+									</div>
+								)
+							}
+						</div>
+						<h1>{title}</h1>
+						<div class="meta-tags">
+							{category && <span class="tag">{category}</span>}
+							{area && <span class="tag">{area}</span>}
+						</div>
+						<hr />
+					</div>
+					<slot />
+					<div class="newsletter-footer">
+						<h3>Enjoyed this edition?</h3>
+						<p>Get weekly discoveries of Hyderabad hidden gems delivered to your inbox.</p>
+						<a href="/" class="cta-button">Subscribe to Lost in Hyd</a>
+					</div>
+				</div>
+			</article>
+		</main>
+		<Footer />
+	</body>
+</html>

@@ -1,0 +1,265 @@
+---
+import BaseHead from '../../components/BaseHead.astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import { getCollection } from 'astro:content';
+
+const places = await getCollection('places');
+
+// Group by category
+const byCategory: Record<string, typeof places> = {};
+places.forEach(place => {
+	const cat = place.data.category;
+	if (!byCategory[cat]) byCategory[cat] = [];
+	byCategory[cat].push(place);
+});
+
+// Group by area
+const byArea: Record<string, typeof places> = {};
+places.forEach(place => {
+	const area = place.data.area;
+	if (!byArea[area]) byArea[area] = [];
+	byArea[area].push(place);
+});
+
+const categories = {
+	cafe: '☕ Cafes',
+	restaurant: '🍴 Restaurants',
+	attraction: '🎯 Attractions',
+	park: '🌳 Parks',
+	market: '🛒 Markets',
+	museum: '🏛️ Museums',
+	other: '📍 Other'
+};
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead 
+			title="Places in Hyderabad | Lost in Hyd" 
+			description="Discover hidden cafes, restaurants, attractions, and offbeat spots in Hyderabad. From Old City to HiTech City."
+			keywords={['best cafes Hyderabad', 'hidden places Hyderabad', 'Hyderabad attractions', 'best restaurants Hyderabad', 'Hyderabad food']}
+		/>
+	</head>
+	<body>
+		<Header />
+		<main>
+			<section class="intro">
+				<h1>Places in Hyderabad</h1>
+				<p>Hidden gems, best eats, and offbeat spots across the city.</p>
+			</section>
+
+			<!-- Filter by Category -->
+			<section class="filter-section">
+				<h2>Browse by Category</h2>
+				<div class="filter-tags">
+					<a href="#all" class="tag active">All</a>
+					{Object.entries(categories).map(([key, label]) => (
+						<a href={`#${key}`} class="tag">{label}</a>
+					))}
+				</div>
+			</section>
+
+			<!-- Featured Places -->
+			<section class="places-section">
+				<h2>⭐ Featured Places</h2>
+				{places.filter(p => p.data.featured).length === 0 ? (
+					<p class="no-places">No featured places yet. Check back soon!</p>
+				) : (
+					<div class="places-grid">
+						{places.filter(p => p.data.featured).map((place) => (
+							<article class="place-card">
+								{place.data.heroImage && (
+									<img src={place.data.heroImage.src} alt={place.data.name} />
+								)}
+								<div class="place-content">
+									<span class="category-badge">{categories[place.data.category]}</span>
+									<h3>{place.data.name}</h3>
+									<p class="place-area">📍 {place.data.area}</p>
+									<p class="place-description">{place.data.description}</p>
+									{place.data.mustTry && (
+										<p class="must-try">💡 Must try: {place.data.mustTry}</p>
+									)}
+									{place.data.mapLink && (
+										<a href={place.data.mapLink} target="_blank" rel="noopener" class="map-link">
+											View on Map →
+										</a>
+									)}
+								</div>
+							</article>
+						))}
+					</div>
+				)}
+			</section>
+
+			<!-- All Places -->
+			<section class="places-section">
+				<h2>📍 All Places</h2>
+				<div class="places-grid">
+					{places.map((place) => (
+						<article class="place-card">
+							{place.data.heroImage && (
+								<img src={place.data.heroImage.src} alt={place.data.name} />
+							)}
+							<div class="place-content">
+								<span class="category-badge">{categories[place.data.category]}</span>
+								<h3>{place.data.name}</h3>
+								<p class="place-area">📍 {place.data.area}</p>
+								<p class="place-description">{place.data.description}</p>
+							</div>
+						</article>
+					))}
+				</div>
+			</section>
+
+			<!-- Browse by Area -->
+			<section class="area-section">
+				<h2>🗺️ Browse by Area</h2>
+				<div class="area-grid">
+					{Object.entries(byArea).map(([area, areaPlaces]) => (
+						<div class="area-card">
+							<h3>{area}</h3>
+							<p>{areaPlaces.length} places</p>
+						</div>
+					))}
+				</div>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.intro {
+		text-align: center;
+		padding: 2em 0;
+	}
+	.intro h1 {
+		font-size: 2.5em;
+		margin-bottom: 0.5em;
+	}
+	.filter-section {
+		margin: 2em 0;
+	}
+	.filter-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5em;
+		margin-top: 1em;
+	}
+	.tag {
+		background: #f0f0f0;
+		color: #333;
+		padding: 0.5em 1em;
+		border-radius: 20px;
+		text-decoration: none;
+		font-size: 0.9em;
+		transition: all 0.2s;
+	}
+	.tag:hover, .tag.active {
+		background: #2c3e50;
+		color: white;
+	}
+	.places-section {
+		margin: 3em 0;
+	}
+	.places-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1.5em;
+		margin-top: 1.5em;
+	}
+	.place-card {
+		background: white;
+		border-radius: 12px;
+		overflow: hidden;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+		display: flex;
+		flex-direction: column;
+		transition: transform 0.2s, box-shadow 0.2s;
+	}
+	.place-card:hover {
+		transform: translateY(-4px);
+		box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+	}
+	.place-card img {
+		width: 100%;
+		height: 200px;
+		object-fit: cover;
+	}
+	.place-content {
+		padding: 1.5em;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	.category-badge {
+		display: inline-block;
+		background: #e74c3c;
+		color: white;
+		padding: 0.25em 0.75em;
+		border-radius: 4px;
+		font-size: 0.8em;
+		margin-bottom: 0.75em;
+		width: fit-content;
+	}
+	.place-card h3 {
+		margin: 0 0 0.5em;
+		color: #2c3e50;
+		font-size: 1.25em;
+	}
+	.place-area {
+		color: #666;
+		font-size: 0.9em;
+		margin: 0 0 0.75em;
+	}
+	.place-description {
+		color: #555;
+		margin: 0 0 0.75em;
+		flex: 1;
+	}
+	.must-try {
+		background: #f8f9fa;
+		padding: 0.75em;
+		border-radius: 6px;
+		font-size: 0.9em;
+		margin: 0 0 0.75em;
+	}
+	.map-link {
+		color: #2c3e50;
+		font-weight: bold;
+		text-decoration: none;
+		font-size: 0.95em;
+	}
+	.no-places {
+		text-align: center;
+		color: #888;
+		font-style: italic;
+		padding: 2em;
+	}
+	.area-section {
+		margin: 3em 0;
+	}
+	.area-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 1em;
+		margin-top: 1.5em;
+	}
+	.area-card {
+		background: #f8f9fa;
+		padding: 1.5em;
+		border-radius: 8px;
+		text-align: center;
+	}
+	.area-card h3 {
+		margin: 0 0 0.5em;
+		color: #2c3e50;
+	}
+	.area-card p {
+		margin: 0;
+		color: #888;
+		font-size: 0.9em;
+	}
+</style>
