@@ -1,0 +1,183 @@
+---
+import BaseHead from '../../components/BaseHead.astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import { getCollection } from 'astro:content';
+import FormattedDate from '../../components/FormattedDate.astro';
+
+const events = (await getCollection('events')).sort(
+	(a, b) => b.data.eventDate.valueOf() - a.data.eventDate.valueOf()
+);
+
+// Group by upcoming vs past
+const now = new Date();
+const upcomingEvents = events.filter(e => new Date(e.data.eventDate) >= now);
+const pastEvents = events.filter(e => new Date(e.data.eventDate) < now);
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead 
+			title="Events in Hyderabad | Lost in Hyd" 
+			description="Discover the best events in Hyderabad this weekend — concerts, exhibitions, food festivals, and cultural happenings."
+			keywords={['Hyderabad events', 'things to do Hyderabad weekend', 'Hyderabad concerts', 'Hyderabad exhibitions', 'events today Hyderabad']}
+		/>
+	</head>
+	<body>
+		<Header />
+		<main>
+			<section class="intro">
+				<h1>Events in Hyderabad</h1>
+				<p>Discover concerts, exhibitions, food festivals, and cultural happenings around the city.</p>
+			</section>
+
+			<section class="events-section">
+				<h2>🎭 Upcoming Events</h2>
+				{upcomingEvents.length === 0 ? (
+					<p class="no-events">No upcoming events found. Check back soon!</p>
+				) : (
+					<div class="events-grid">
+						{upcomingEvents.map((event) => (
+							<article class="event-card">
+								{event.data.heroImage && (
+									<img src={event.data.heroImage.src} alt={event.data.title} />
+								)}
+								<div class="event-content">
+									<h3>{event.data.title}</h3>
+									<p class="event-date"><FormattedDate date={event.data.eventDate} /></p>
+									<p class="event-location">📍 {event.data.area} — {event.data.venue || event.data.location}</p>
+									<p class="event-description">{event.data.description}</p>
+									<div class="event-footer">
+										{event.data.price && <span class="price">{event.data.price}</span>}
+										{event.data.link && (
+											<a href={event.data.link} target="_blank" rel="noopener" class="event-link">
+												More Info →
+											</a>
+										)}
+									</div>
+								</div>
+							</article>
+						))}
+					</div>
+				)}
+			</section>
+
+			{pastEvents.length > 0 && (
+				<section class="events-section past">
+					<h2>📅 Past Events</h2>
+					<details>
+						<summary>Show {pastEvents.length} past events</summary>
+						<div class="events-grid">
+							{pastEvents.slice(0, 6).map((event) => (
+								<article class="event-card past">
+									<h3>{event.data.title}</h3>
+									<p class="event-date"><FormattedDate date={event.data.eventDate} /></p>
+									<p class="event-location">{event.data.area}</p>
+								</article>
+							))}
+						</div>
+					</details>
+				</section>
+			)}
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.intro {
+		text-align: center;
+		padding: 2em 0;
+	}
+	.intro h1 {
+		font-size: 2.5em;
+		margin-bottom: 0.5em;
+	}
+	.events-section {
+		margin: 3em 0;
+	}
+	.events-section h2 {
+		margin-bottom: 1em;
+	}
+	.events-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+		gap: 1.5em;
+	}
+	.event-card {
+		background: white;
+		border-radius: 12px;
+		overflow: hidden;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+		display: flex;
+		flex-direction: column;
+	}
+	.event-card img {
+		width: 100%;
+		height: 200px;
+		object-fit: cover;
+	}
+	.event-content {
+		padding: 1.5em;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+	.event-card h3 {
+		margin: 0 0 0.5em;
+		color: #2c3e50;
+		font-size: 1.25em;
+	}
+	.event-date {
+		color: #e74c3c;
+		font-weight: bold;
+		margin: 0 0 0.5em;
+	}
+	.event-location {
+		color: #666;
+		margin: 0 0 0.5em;
+		font-size: 0.95em;
+	}
+	.event-description {
+		color: #555;
+		margin: 0 0 1em;
+		flex: 1;
+	}
+	.event-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: auto;
+	}
+	.price {
+		background: #27ae60;
+		color: white;
+		padding: 0.25em 0.75em;
+		border-radius: 4px;
+		font-size: 0.9em;
+	}
+	.event-link {
+		color: #2c3e50;
+		font-weight: bold;
+		text-decoration: none;
+	}
+	.event-card.past {
+		opacity: 0.7;
+	}
+	.no-events {
+		text-align: center;
+		color: #888;
+		font-style: italic;
+		padding: 2em;
+	}
+	.past details {
+		background: #f8f9fa;
+		padding: 1em;
+		border-radius: 8px;
+	}
+	.past summary {
+		cursor: pointer;
+		font-weight: bold;
+	}
+</style>
