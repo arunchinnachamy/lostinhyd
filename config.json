@@ -1,0 +1,16 @@
+{
+  "project": "lostinhyd",
+  "name": "Lost in Hyd",
+  "description": "Weekly newsletter exploring local happenings and hidden gems in Hyderabad",
+  "base_url": "https://lostinhyd.com",
+  "social": {
+    "instagram": "@lostinhyd",
+    "twitter": "@lostinhyd",
+    "email": "hello@lostinhyd.com"
+  },
+  "settings": {
+    "publish_day": "Friday",
+    "timezone": "Asia/Kolkata",
+    "newsletter_subject_template": "Lost in Hyd #{{edition}} - {{title}}"
+  }
+}
