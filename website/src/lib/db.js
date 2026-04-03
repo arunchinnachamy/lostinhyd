@@ -3,12 +3,15 @@ import postgres from 'postgres';
 // Database URL must be set via environment variable
 const DATABASE_URL = import.meta.env.DATABASE_URL || process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
+// Check if we have a database URL
+const hasDatabase = !!DATABASE_URL;
 
-// Create postgres client
+// Create postgres client (only if URL is available)
 export function createClient() {
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is required');
+  }
+  
   return postgres(DATABASE_URL, {
     ssl: 'require',
     connect_timeout: 30,
@@ -17,8 +20,19 @@ export function createClient() {
   });
 }
 
+// Mock data for when database is not available
+const mockCategories = [
+  { id: 1, name: 'Music', slug: 'music', event_count: 0 },
+  { id: 2, name: 'Food & Drink', slug: 'food-drink', event_count: 0 },
+  { id: 3, name: 'Arts & Culture', slug: 'arts-culture', event_count: 0 },
+  { id: 4, name: 'Tech', slug: 'tech', event_count: 0 },
+  { id: 5, name: 'Sports', slug: 'sports', event_count: 0 },
+];
+
 // Get all published events
 export async function getEvents(limit = 50, offset = 0) {
+  if (!hasDatabase) return [];
+  
   const sql = createClient();
   try {
     const events = await sql`
@@ -40,6 +54,9 @@ export async function getEvents(limit = 50, offset = 0) {
       LIMIT ${limit} OFFSET ${offset}
     `;
     return events;
+  } catch (e) {
+    console.error('Database error:', e);
+    return [];
   } finally {
     await sql.end();
   }
@@ -47,6 +64,8 @@ export async function getEvents(limit = 50, offset = 0) {
 
 // Get featured events
 export async function getFeaturedEvents(limit = 6) {
+  if (!hasDatabase) return [];
+  
   const sql = createClient();
   try {
     const events = await sql`
@@ -67,6 +86,9 @@ export async function getFeaturedEvents(limit = 6) {
       LIMIT ${limit}
     `;
     return events;
+  } catch (e) {
+    console.error('Database error:', e);
+    return [];
   } finally {
     await sql.end();
   }
@@ -74,6 +96,8 @@ export async function getFeaturedEvents(limit = 6) {
 
 // Get single event by slug
 export async function getEventBySlug(slug) {
+  if (!hasDatabase) return null;
+  
   const sql = createClient();
   try {
     const [event] = await sql`
@@ -97,6 +121,9 @@ export async function getEventBySlug(slug) {
       GROUP BY e.id, v.name, v.address, v.area, v.city, v.latitude, v.longitude, v.phone, v.website
     `;
     return event;
+  } catch (e) {
+    console.error('Database error:', e);
+    return null;
   } finally {
     await sql.end();
   }
@@ -104,6 +131,8 @@ export async function getEventBySlug(slug) {
 
 // Get all categories
 export async function getCategories() {
+  if (!hasDatabase) return mockCategories;
+  
   const sql = createClient();
   try {
     const categories = await sql`
@@ -118,6 +147,9 @@ export async function getCategories() {
       ORDER BY c.display_order ASC, c.name ASC
     `;
     return categories;
+  } catch (e) {
+    console.error('Database error:', e);
+    return mockCategories;
   } finally {
     await sql.end();
   }
@@ -125,6 +157,8 @@ export async function getCategories() {
 
 // Get category by slug
 export async function getCategoryBySlug(slug) {
+  if (!hasDatabase) return null;
+  
   const sql = createClient();
   try {
     const [category] = await sql`
@@ -132,6 +166,9 @@ export async function getCategoryBySlug(slug) {
       WHERE slug = ${slug} AND is_active = true
     `;
     return category;
+  } catch (e) {
+    console.error('Database error:', e);
+    return null;
   } finally {
     await sql.end();
   }
@@ -139,6 +176,8 @@ export async function getCategoryBySlug(slug) {
 
 // Get events by category
 export async function getEventsByCategory(categorySlug, limit = 50) {
+  if (!hasDatabase) return [];
+  
   const sql = createClient();
   try {
     const events = await sql`
@@ -161,6 +200,9 @@ export async function getEventsByCategory(categorySlug, limit = 50) {
       LIMIT ${limit}
     `;
     return events;
+  } catch (e) {
+    console.error('Database error:', e);
+    return [];
   } finally {
     await sql.end();
   }
@@ -168,6 +210,8 @@ export async function getEventsByCategory(categorySlug, limit = 50) {
 
 // Get all active sources
 export async function getSources() {
+  if (!hasDatabase) return [];
+  
   const sql = createClient();
   try {
     const sources = await sql`
@@ -176,6 +220,9 @@ export async function getSources() {
       ORDER BY name ASC
     `;
     return sources;
+  } catch (e) {
+    console.error('Database error:', e);
+    return [];
   } finally {
     await sql.end();
   }
