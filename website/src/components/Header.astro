@@ -1,9 +1,10 @@
 ---
-export const prerender = false;  // Server-rendered for database access
+export const prerender = false;  // Server-rendered for D1 access
 
 import { getCategories } from '../lib/db.js';
 
-const categories = await getCategories();
+const context = Astro;
+const categories = await getCategories(context);
 ---
 
 <header class="site-header">

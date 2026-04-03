@@ -10,15 +10,10 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro",
-    "deploy": "wrangler pages deploy dist"
+    "astro": "astro"
   },
   "dependencies": {
     "astro": "^5.7.0",
-    "@astrojs/cloudflare": "^12.0.0",
-    "postgres": "^3.4.5"
-  },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+    "@astrojs/cloudflare": "^12.0.0"
   }
 }

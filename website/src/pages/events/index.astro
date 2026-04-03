@@ -1,5 +1,5 @@
 ---
-export const prerender = false;  // Server-rendered for database access
+export const prerender = false;  // Server-rendered for D1 access
 
 import Layout from '../../layouts/Layout.astro';
 import Header from '../../components/Header.astro';
@@ -7,8 +7,9 @@ import Footer from '../../components/Footer.astro';
 import EventList from '../../components/EventList.astro';
 import { getEvents, getCategories } from '../../lib/db.js';
 
-const allEvents = await getEvents(100, 0);
-const categories = await getCategories();
+const context = Astro;
+const allEvents = await getEvents(context, 100, 0);
+const categories = await getCategories(context);
 
 const areas = [...new Set(allEvents.map(e => e.area).filter(Boolean))];
 
