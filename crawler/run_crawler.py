@@ -15,7 +15,14 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.data_store import RawDataStore
-from sources.bookmyshow import BookMyShowCrawler
+from sources import (
+    BookMyShowCrawler,
+    EventsHighCrawler,
+    AllEventsCrawler,
+    MeetupCrawler,
+    TownscriptCrawler,
+    FullHyderabadCrawler
+)
 from core.browserless_client import BrowserlessClient
 
 # Load environment variables
@@ -41,14 +48,27 @@ async def run_crawler(source_name: str, database_url: str,
         batch_id = await data_store.create_crawl_batch(source_name)
         logger.info(f"Created crawl batch: {batch_id}")
         
-        # Get crawler instance
+        # Get crawler instance based on source name
         crawler = None
-        if source_name == 'bookmyshow':
-            crawler = BookMyShowCrawler(
+        source_map = {
+            'bookmyshow': lambda: BookMyShowCrawler(
                 data_store=data_store,
                 browserless_token=browserless_token,
                 browserless_url=browserless_url
-            )
+            ),
+            'eventshigh': lambda: EventsHighCrawler(data_store=data_store),
+            'allevents': lambda: AllEventsCrawler(data_store=data_store),
+            'meetup': lambda: MeetupCrawler(data_store=data_store),
+            'townscript': lambda: TownscriptCrawler(data_store=data_store),
+            'fullhyderabad': lambda: FullHyderabadCrawler(data_store=data_store),
+        }
+        
+        if source_name in source_map:
+            try:
+                crawler = source_map[source_name]()
+            except Exception as e:
+                logger.error(f"Error initializing {source_name} crawler: {e}")
+                return 1
         else:
             logger.error(f"Unknown source: {source_name}")
             return 1
