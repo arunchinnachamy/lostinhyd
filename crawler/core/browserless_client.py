@@ -75,39 +75,38 @@ class BrowserlessClient:
                          viewport: Optional[Dict[str, int]] = None,
                          reject_resource_types: Optional[List[str]] = None) -> Optional[str]:
         """
-        Scrape a page using Browserless /scrape endpoint
+        Scrape a page using Browserless /content endpoint
         
         Args:
             url: URL to scrape
-            wait_for: CSS selector or XPath to wait for
-            wait_timeout: Wait timeout in milliseconds
+            wait_for: CSS selector to wait for (not used in this endpoint)
+            wait_timeout: Wait timeout in milliseconds (converted to seconds for gotoOptions)
             viewport: Browser viewport {width, height}
             reject_resource_types: Resource types to block (image, stylesheet, font, etc.)
             
         Returns:
             HTML content or None if failed
         """
-        endpoint = self._build_url("/scrape")
+        endpoint = self._build_url("/content")
         
-        # Build request body
+        # Build request body for /content endpoint
+        # This endpoint returns the page content/HTML
         body = {
             "url": url,
-            "waitFor": wait_timeout,
-            "rejectResourceTypes": reject_resource_types or ["image", "stylesheet", "font", "media"],
-            "rejectRequestPattern": ["*.jpg", "*.jpeg", "*.png", "*.gif", "*.css"],
         }
         
-        if wait_for:
-            body["waitFor"] = {
-                "selector": wait_for,
-                "timeout": wait_timeout
-            }
+        # Add gotoOptions for wait timeout and waitUntil strategy
+        goto_options = {
+            "timeout": wait_timeout,
+            "waitUntil": "networkidle0"  # Wait until network is idle (no connections for 500ms)
+        }
+        body["gotoOptions"] = goto_options
         
         if viewport:
             body["viewport"] = viewport
         
         try:
-            logger.info(f"Scraping {url} via Browserless")
+            logger.info(f"Scraping {url} via Browserless (timeout={wait_timeout}ms)")
             
             async with self.session.post(
                 endpoint,
@@ -116,8 +115,7 @@ class BrowserlessClient:
             ) as response:
                 
                 if response.status == 200:
-                    result = await response.json()
-                    html = result.get('data', {}).get('html', '')
+                    html = await response.text()
                     logger.info(f"Successfully scraped {url} ({len(html)} bytes)")
                     return html
                 else:
@@ -129,10 +127,10 @@ class BrowserlessClient:
             logger.error(f"Error scraping {url}: {e}")
             return None
     
-    async function execute_script(self, url: str, script: str, 
-                                   wait_for: Optional[str] = None) -> Optional[Any]:
+    async def execute_script(self, url: str, script: str,
+                             wait_for: Optional[str] = None) -> Optional[Any]:
         """
-        Execute custom JavaScript on a page
+        Execute custom JavaScript on a page using /function endpoint
         
         Args:
             url: URL to load
@@ -144,12 +142,26 @@ class BrowserlessClient:
         """
         endpoint = self._build_url("/function")
         
+        # Browserless /function endpoint requires specific format
         body = {
             "url": url,
-            "function": script,
-            "waitFor": wait_for,
-            "rejectResourceTypes": ["image", "stylesheet", "font"],
+            "code": script,  # Use "code" not "function"
         }
+        
+        # Add goto options for waiting
+        goto_options = {
+            "waitUntil": "networkidle0",
+            "timeout": 45000
+        }
+        
+        if wait_for:
+            # Add page wait options if selector provided
+            goto_options["waitForSelector"] = {
+                "selector": wait_for,
+                "timeout": 10000
+            }
+        
+        body["gotoOptions"] = goto_options
         
         try:
             logger.info(f"Executing script on {url}")

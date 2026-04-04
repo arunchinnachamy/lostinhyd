@@ -3,7 +3,7 @@ Browser-based base crawler using Browserless
 For sites that require JavaScript rendering (BookMyShow, etc.)
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import List, Dict, Any, Optional
 import logging
 import hashlib
@@ -14,9 +14,9 @@ from core.browserless_client import BrowserlessClient
 logger = logging.getLogger("crawler.browser_based")
 
 
-class BrowserBasedCrawler(BaseCrawler, ABC):
+class BrowserBasedCrawler(BaseCrawler):
     """
-    Abstract base class for crawlers that need a real browser
+    Base class for crawlers that need a real browser
     Uses Browserless for headless Chrome automation
     """
     
@@ -52,8 +52,7 @@ class BrowserBasedCrawler(BaseCrawler, ABC):
         ) as browser:
             self.browser = browser
             
-            logger.info(f"Starting browser-based crawl for {self.source_name}", 
-                       batch_id=batch_id)
+            logger.info(f"Starting browser-based crawl for {self.source_name} [batch={batch_id}]")
             self.stats = {k: 0 for k in self.stats}
             
             try:
@@ -93,6 +92,16 @@ class BrowserBasedCrawler(BaseCrawler, ABC):
                 raise
             finally:
                 self.browser = None
+    
+    async def fetch_events(self, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Override fetch_events to use browser when available
+        """
+        if self.browser:
+            return await self.fetch_events_with_browser(**kwargs)
+        else:
+            # Fallback to HTTP-based fetching
+            return await super().fetch_events(**kwargs)
     
     @abstractmethod
     async def fetch_events_with_browser(self, **kwargs) -> List[Dict[str, Any]]:

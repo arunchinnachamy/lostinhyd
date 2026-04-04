@@ -58,8 +58,13 @@ class BookMyShowCrawler(BrowserBasedCrawler):
         if events:
             logger.info(f"Found {len(events)} events on main page")
         else:
-            # Try alternative parsing
-            events = await self._extract_via_selectors()
+            logger.warning("No events found in HTML, trying fallback parsing")
+            # Save HTML for debugging
+            import os
+            debug_file = os.path.expanduser("~/lostinhyd/crawler/debug_bookmyshow.html")
+            with open(debug_file, 'w', encoding='utf-8') as f:
+                f.write(html)
+            logger.info(f"Saved HTML to {debug_file} for debugging")
         
         return events
     
