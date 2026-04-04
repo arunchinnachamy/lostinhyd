@@ -25,20 +25,53 @@ cd crawler
 pip install -r requirements.txt
 ```
 
-### 2. Configure Database
-Set `DATABASE_URL` environment variable (use your actual database URL):
+### 2. Configure Environment
+
+Copy `.env.example` to `.env` and configure:
+
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+Required variables:
 ```bash
 export DATABASE_URL="your-postgres-connection-string"
+export BROWSERLESS_TOKEN="your-browserless-token"  # For JavaScript sites
 ```
 
 ### 3. Run Crawler
+
 ```bash
 # Run specific crawler
 python run_crawler.py --source bookmyshow
 
+# Run with Browserless (for JavaScript-heavy sites)
+python run_crawler.py --source bookmyshow --browserless-token YOUR_TOKEN
+
 # Run all active crawlers
 python run_crawler.py --all
+
+# Use custom Browserless endpoint (self-hosted)
+python run_crawler.py --source bookmyshow \
+  --browserless-token YOUR_TOKEN \
+  --browserless-url http://localhost:3000
 ```
+
+### Browserless Setup
+
+For sites like **BookMyShow** that block HTTP requests and require JavaScript:
+
+**Option 1: Browserless.io Cloud (Recommended)**
+1. Sign up at https://www.browserless.io/
+2. Get your API token
+3. Set `BROWSERLESS_TOKEN=your-token`
+
+**Option 2: Self-hosted with Docker**
+```bash
+docker run -p 3000:3000 -e "TOKEN=your-secret-token" browserless/chrome
+```
+Then set `BROWSERLESS_URL=http://localhost:3000`
 
 ## Database Schema
 
