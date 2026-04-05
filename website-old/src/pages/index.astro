@@ -1,0 +1,254 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import { SITE_TITLE, SITE_DESCRIPTION } from '../consts';
+import { getCollection } from 'astro:content';
+import FormattedDate from '../components/FormattedDate.astro';
+
+const newsletters = (await getCollection('newsletter')).sort(
+	(a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+
+const latestNewsletter = newsletters[0];
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead 
+			title="Lost in Hyd | Hyderabad Hidden Gems & Weekly Newsletter" 
+			description={SITE_DESCRIPTION}
+			keywords={['Hyderabad guide', 'things to do Hyderabad', 'Hyderabad hidden gems', 'Hyderabad food', 'Hyderabad events', 'weekend Hyderabad']}
+		/>
+	</head>
+	<body>
+		<Header />
+		<main>
+			<!-- Hero Section -->
+			<section class="hero">
+				<h1>Discover Hyderabad Hidden Gems</h1>
+				<p class="hero-description">
+					Your weekly guide to the best local food, events, and offbeat spots in Hyderabad. 
+					From Old City biryani joints to HiTech City hidden cafes — we've got you covered.
+				</p>
+				<div class="cta-buttons">
+					<a href="/newsletter" class="cta-primary">Read Latest Edition</a>
+					<a href="/events" class="cta-secondary">This Weekend Events</a>
+				</div>
+			</section>
+
+			<!-- Latest Newsletter -->
+			{latestNewsletter && (
+				<section class="latest">
+					<h2>Latest Newsletter</h2>
+					<div class="newsletter-preview">
+						<h3><a href={`/newsletter/${latestNewsletter.id}/`}>{latestNewsletter.data.title}</a></h3>
+						<p class="date"><FormattedDate date={latestNewsletter.data.pubDate} /></p>
+						<p>{latestNewsletter.data.description}</p>
+						<a href={`/newsletter/${latestNewsletter.id}/`} class="read-more">Read full edition →</a>
+					</div>
+				</section>
+			)}
+
+			<!-- Categories -->
+			<section class="categories">
+				<h2>Explore by Category</h2>
+				<div class="category-grid">
+					<a href="/places?category=food" class="category-card">
+						<h3>🍴 Hidden Food</h3>
+						<p>Unassuming joints serving the best biryani, chai, and street food</p>
+					</a>
+					<a href="/events" class="category-card">
+						<h3>🎭 Local Events</h3>
+						<p>Cultural happenings, gigs, and community meetups</p>
+					</a>
+					<a href="/places?category=attraction" class="category-card">
+						<h3>🗺️ Offbeat Spots</h3>
+						<p>Temples, stepwells, and forgotten corners of the city</p>
+					</a>
+					<a href="/places" class="category-card">
+						<h3>🏙️ Neighborhoods</h3>
+						<p>Deep dives into areas like Moazzam Jahi Market, Shahran, Jubilee Hills</p>
+					</a>
+				</div>
+			</section>
+
+			<!-- Newsletter Subscribe -->
+			<section class="subscribe">
+				<h2>Get Weekly Updates</h2>
+				<p>Join 500+ Hyderabad explorers getting our weekly digest of hidden gems.</p>
+				<form class="subscribe-form" action="#" method="POST">
+					<input type="email" placeholder="Enter your email" required />
+					<button type="submit">Subscribe</button>
+				</form>
+			</section>
+
+			<!-- SEO Content -->
+			<section class="about-content">
+				<h2>About Lost in Hyd</h2>
+				<p>
+					<strong>Lost in Hyd</strong> is Hyderabad premier local discovery newsletter. Whether you're a lifelong 
+					Hyderabadi or new to the city, we help you find the best experiences — from 
+					<b>weekend events in Hyderabad</b> to <b>hidden cafes in Jubilee Hills</b>, 
+					<b>best biryani in Old City</b> to <b>offbeat places near Gachibowli</b>.
+				</p>
+				<p>
+					Our weekly newsletter covers: food trails, cultural events, neighborhood stories, 
+					and practical guides for exploring the city. We focus on local, independent businesses 
+					and authentic experiences you won't find in typical tourist guides.
+				</p>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
+
+<style>
+	.hero {
+		text-align: center;
+		padding: 4em 1em;
+		background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+		margin: 0 -1em;
+	}
+	.hero h1 {
+		font-size: 3em;
+		margin-bottom: 0.5em;
+		color: #2c3e50;
+	}
+	.hero-description {
+		font-size: 1.25em;
+		max-width: 600px;
+		margin: 0 auto 1.5em;
+		color: #555;
+	}
+	.cta-buttons {
+		display: flex;
+		gap: 1em;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+	.cta-primary, .cta-secondary {
+		padding: 0.75em 1.5em;
+		border-radius: 8px;
+		text-decoration: none;
+		font-weight: bold;
+		transition: transform 0.2s;
+	}
+	.cta-primary {
+		background: #2c3e50;
+		color: white;
+	}
+	.cta-secondary {
+		background: white;
+		color: #2c3e50;
+		border: 2px solid #2c3e50;
+	}
+	.cta-primary:hover, .cta-secondary:hover {
+		transform: translateY(-2px);
+	}
+	section {
+		margin: 3em 0;
+	}
+	.latest {
+		background: #f8f9fa;
+		padding: 2em;
+		border-radius: 12px;
+	}
+	.newsletter-preview {
+		margin-top: 1em;
+	}
+	.newsletter-preview h3 {
+		margin: 0 0 0.5em;
+	}
+	.newsletter-preview h3 a {
+		color: #2c3e50;
+		text-decoration: none;
+	}
+	.newsletter-preview .date {
+		color: #888;
+		font-size: 0.9em;
+	}
+	.read-more {
+		display: inline-block;
+		margin-top: 1em;
+		color: #2c3e50;
+		font-weight: bold;
+	}
+	.category-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+		gap: 1.5em;
+		margin-top: 1.5em;
+	}
+	.category-card {
+		background: white;
+		padding: 1.5em;
+		border-radius: 12px;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+		text-decoration: none;
+		color: inherit;
+		transition: transform 0.2s, box-shadow 0.2s;
+	}
+	.category-card:hover {
+		transform: translateY(-4px);
+		box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+	}
+	.category-card h3 {
+		margin: 0 0 0.5em;
+		font-size: 1.25em;
+	}
+	.category-card p {
+		margin: 0;
+		color: #666;
+	}
+	.subscribe {
+		text-align: center;
+		background: #2c3e50;
+		color: white;
+		padding: 3em 2em;
+		border-radius: 12px;
+		margin: 3em -1em;
+	}
+	.subscribe h2 {
+		margin-top: 0;
+		color: white;
+	}
+	.subscribe-form {
+		display: flex;
+		gap: 0.5em;
+		justify-content: center;
+		max-width: 500px;
+		margin: 1.5em auto 0;
+		flex-wrap: wrap;
+	}
+	.subscribe-form input {
+		flex: 1;
+		min-width: 250px;
+		padding: 0.75em;
+		border: none;
+		border-radius: 6px;
+		font-size: 1em;
+	}
+	.subscribe-form button {
+		padding: 0.75em 1.5em;
+		background: #e74c3c;
+		color: white;
+		border: none;
+		border-radius: 6px;
+		font-weight: bold;
+		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.subscribe-form button:hover {
+		background: #c0392b;
+	}
+	.about-content {
+		max-width: 720px;
+		margin: 3em auto;
+		line-height: 1.8;
+	}
+	.about-content h2 {
+		text-align: center;
+	}
+</style>
