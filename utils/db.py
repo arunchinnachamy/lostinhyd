@@ -51,11 +51,11 @@ class Event:
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     crawled_at: Optional[datetime] = None
-    
+
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             'id': self.id,
@@ -105,7 +105,7 @@ class Place:
     id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
@@ -115,11 +115,11 @@ class Place:
 
 class Database:
     """Database connection and operations"""
-    
+
     def __init__(self, connection_string: Optional[str] = None):
         """
         Initialize database connection.
-        
+
         Args:
             connection_string: PostgreSQL connection string. If not provided,
                              will look for DATABASE_URL env variable.
@@ -127,19 +127,19 @@ class Database:
         self.connection_string = connection_string or os.getenv('DATABASE_URL')
         if not self.connection_string:
             raise ValueError("Database connection string required. Set DATABASE_URL env variable.")
-        
+
         self._pool = None
-    
+
     async def connect(self):
         """Initialize connection pool"""
         import asyncpg
         self._pool = await asyncpg.create_pool(self.connection_string)
-    
+
     async def close(self):
         """Close connection pool"""
         if self._pool:
             await self._pool.close()
-    
+
     async def upsert_event(self, event: Event) -> str:
         """
         Insert or update an event.
@@ -154,7 +154,7 @@ class Database:
                 )
                 if existing:
                     event.id = existing['id']
-            
+
             if event.id:
                 # Update
                 await conn.execute(
@@ -189,9 +189,9 @@ class Database:
                     event.category, event.tags, event.status.value
                 )
                 return record['id']
-    
+
     async def get_upcoming_events(
-        self, 
+        self,
         area: Optional[str] = None,
         category: Optional[str] = None,
         limit: int = 50
@@ -199,40 +199,146 @@ class Database:
         """Get upcoming events with optional filters"""
         async with self._pool.acquire() as conn:
             query = """
-                SELECT * FROM events 
+                SELECT * FROM events
                 WHERE event_date >= NOW()
                 AND status IN ('draft', 'published')
             """
             params = []
-            
+
             if area:
                 query += f" AND area ILIKE ${len(params) + 1}"
                 params.append(f"%{area}%")
-            
+
             if category:
                 query += f" AND category = ${len(params) + 1}"
                 params.append(category)
-            
+
             query += " ORDER BY event_date ASC LIMIT $" + str(len(params) + 1)
             params.append(limit)
-            
+
             rows = await conn.fetch(query, *params)
             return [self._row_to_event(row) for row in rows]
-    
+
     async def get_events_by_source(self, source: str, days: int = 7) -> List[Event]:
         """Get events from a specific source crawled in last N days"""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT * FROM events 
-                WHERE source = $1 
+                SELECT * FROM events
+                WHERE source = $1
                 AND crawled_at >= NOW() - INTERVAL '$2 days'
                 ORDER BY crawled_at DESC
                 """,
                 source, days
             )
             return [self._row_to_event(row) for row in rows]
-    
+
+    async def start_crawl_log(self, source_name: str) -> Optional[str]:
+        """
+        Start a crawl log entry for the given source.
+
+        Looks up the source_id from sources by name, inserts a new
+        crawl_logs row with status='running', and returns the log id.
+        Returns None if the source is not found or an error occurs.
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                source_row = await conn.fetchrow(
+                    "SELECT id FROM sources WHERE name = $1",
+                    source_name,
+                )
+                if not source_row:
+                    return None
+
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO crawl_logs (source_id, status)
+                    VALUES ($1, 'running')
+                    RETURNING id
+                    """,
+                    source_row['id'],
+                )
+                return str(row['id'])
+        except Exception:
+            return None
+
+    async def end_crawl_log(
+        self,
+        log_id: str,
+        success: bool,
+        error_message: Optional[str] = None,
+        events_found: int = 0,
+        events_added: int = 0,
+        events_updated: int = 0,
+        events_skipped: int = 0,
+    ) -> None:
+        """
+        Finalise a crawl log entry with results.
+
+        Args:
+            log_id: The crawl_logs row id returned by start_crawl_log.
+            success: Whether the crawl succeeded.
+            error_message: Error message if the crawl failed.
+            events_found: Total events discovered.
+            events_added: New events inserted.
+            events_updated: Existing events updated.
+            events_skipped: Events that were skipped.
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                await conn.execute(
+                    """
+                    UPDATE crawl_logs SET
+                        completed_at = NOW(),
+                        status = $1,
+                        errors = $2,
+                        events_found = $3,
+                        events_added = $4,
+                        events_updated = $5,
+                        events_skipped = $6
+                    WHERE id = $7
+                    """,
+                    'success' if success else 'failed',
+                    error_message,
+                    events_found,
+                    events_added,
+                    events_updated,
+                    events_skipped,
+                    int(log_id),
+                )
+        except Exception:
+            pass
+
+    async def get_source_config(self, source_name: str) -> Dict[str, Any]:
+        """
+        Load configuration for a crawler source from sources table.
+
+        Args:
+            source_name: The name of the source.
+
+        Returns:
+            Dict with url, is_active, crawl_frequency,
+            or empty dict if not found.
+        """
+        try:
+            async with self._pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    """
+                    SELECT url, is_active, crawl_frequency
+                    FROM sources WHERE name = $1
+                    """,
+                    source_name,
+                )
+                if not row:
+                    return {}
+                return {
+                    'url': row['url'],
+                    'is_active': row['is_active'],
+                    'crawl_frequency': row['crawl_frequency'],
+                }
+        except Exception:
+            return {}
+
     def _row_to_event(self, row) -> Event:
         """Convert database row to Event object"""
         return Event(
@@ -274,5 +380,5 @@ def get_connection_string(
     database = database or os.getenv('PGDATABASE', 'lostinhyd')
     user = user or os.getenv('PGUSER', 'postgres')
     password = password or os.getenv('PGPASSWORD', '')
-    
+
     return f"postgresql://{user}:{password}@{host}:{port}/{database}"

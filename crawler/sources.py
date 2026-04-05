@@ -1,10 +1,16 @@
 """
-Example crawler implementations for Hyderabad event sources.
-These are templates - you'll need to adapt selectors based on actual site structures.
+Crawler implementations for Hyderabad event sources.
+
+- AllEvents.in: HTML scraping (server-rendered event cards)
+- Meetup.com: Scrape __NEXT_DATA__ JSON from the SSR page
+- Insider.in: Client-rendered SPA — requires headless browser (stubbed)
+- BookMyShow: Client-rendered SPA — requires headless browser (stubbed)
 """
 
 import asyncio
 import logging
+import json
+import re
 from typing import List, Optional
 from datetime import datetime, timedelta
 
@@ -15,383 +21,308 @@ from utils.db import Event, EventStatus
 logger = logging.getLogger(__name__)
 
 
-@register_crawler("insider")
-class InsiderCrawler(HTMLCrawler):
-    """Crawler for Insider.in Hyderabad events"""
-    
-    @property
-    def source_name(self) -> str:
-        return "insider"
-    
-    async def _crawl_html(self, **kwargs) -> CrawlResult:
-        """Crawl Insider.in for Hyderabad events"""
-        events = []
-        
-        try:
-            # Fetch the Hyderabad events page
-            # Note: This URL and selectors need to be verified against actual site
-            url = "https://insider.in/hyderabad"
-            html = await self.fetch_page(url)
-            soup = self.soup(html)
-            
-            # Find event cards - adjust selectors based on actual HTML structure
-            event_cards = soup.find_all('div', class_='event-card')  # Example class
-            
-            for card in event_cards:
-                try:
-                    # Extract event details - adjust selectors
-                    title_elem = card.find('h3', class_='event-title')
-                    title = title_elem.text.strip() if title_elem else None
-                    
-                    if not title:
-                        continue
-                    
-                    link_elem = card.find('a', href=True)
-                    link = f"https://insider.in{link_elem['href']}" if link_elem else None
-                    
-                    date_elem = card.find('span', class_='event-date')
-                    date_str = date_elem.text.strip() if date_elem else None
-                    event_date = self.parse_date(date_str) if date_str else None
-                    
-                    venue_elem = card.find('span', class_='venue-name')
-                    venue = venue_elem.text.strip() if venue_elem else None
-                    
-                    # Try to extract area from venue
-                    area = self.extract_area_from_location(venue) if venue else None
-                    
-                    # Get description if available
-                    desc_elem = card.find('p', class_='description')
-                    description = desc_elem.text.strip() if desc_elem else None
-                    
-                    event = Event(
-                        title=title,
-                        description=description,
-                        event_date=event_date,
-                        venue=venue,
-                        area=area,
-                        link=link,
-                        category="events",  # Infer from title/description
-                        status=EventStatus.DRAFT,
-                    )
-                    events.append(event)
-                    
-                except Exception as e:
-                    logger.error(f"Error parsing event card: {e}")
-                    continue
-            
-            # Save to database
-            return await self.save_events(events)
-            
-        except Exception as e:
-            logger.error(f"Error crawling Insider.in: {e}")
-            return CrawlResult(
-                events=events,
-                success=False,
-                error_message=str(e)
-            )
-
+# ---------------------------------------------------------------------------
+# AllEvents.in — server-rendered HTML
+# ---------------------------------------------------------------------------
 
 @register_crawler("allevents")
 class AllEventsCrawler(HTMLCrawler):
-    """Crawler for Allevents.in Hyderabad"""
-    
+    """Crawler for allevents.in/hyderabad. Selectors verified April 2026."""
+
     @property
     def source_name(self) -> str:
         return "allevents"
-    
+
     async def _crawl_html(self, **kwargs) -> CrawlResult:
-        """Crawl Allevents.in for Hyderabad events"""
-        events = []
-        
+        events: List[Event] = []
+
+        config = await self.load_config()
+        if config and config.get('is_active') is False:
+            logger.info("Crawler 'allevents' is disabled, skipping")
+            return CrawlResult(events=[], success=True)
+
         try:
-            # Allevents has a Hyderabad specific page
-            url = "https://allevents.in/hyderabad/all"
+            url = config.get('url', 'https://allevents.in/hyderabad/all') if config else 'https://allevents.in/hyderabad/all'
             html = await self.fetch_page(url)
             soup = self.soup(html)
-            
-            # Adjust selectors based on actual site structure
-            event_items = soup.find_all('div', class_='event-item')
-            
-            for item in event_items:
+
+            # Each event card lives inside <div class="event-style-top-v3">
+            event_cards = soup.find_all('div', class_='event-style-top-v3')
+            logger.info(f"Found {len(event_cards)} event cards on allevents.in")
+
+            for card in event_cards:
                 try:
-                    title_elem = item.find('h3')
-                    title = title_elem.text.strip() if title_elem else None
-                    
+                    # The card wraps a single <a class="item-v3"> with href and title
+                    link_elem = card.find('a', class_='item-v3')
+                    if not link_elem:
+                        continue
+
+                    href = link_elem.get('href', '')
+                    title_attr = link_elem.get('title', '').strip()
+
+                    # Title is also in <h3 class="event-title-v3">
+                    title_elem = card.find('h3', class_='event-title-v3')
+                    title = (title_elem.text.strip() if title_elem else title_attr) or None
                     if not title:
                         continue
-                    
-                    link_elem = item.find('a', href=True)
-                    link = link_elem['href'] if link_elem else None
-                    
-                    # Allevents often has structured date info
-                    date_elem = item.find('time')
-                    if date_elem:
-                        datetime_attr = date_elem.get('datetime')
-                        event_date = self.parse_date(datetime_attr) if datetime_attr else None
-                    else:
-                        event_date = None
-                    
-                    location_elem = item.find('span', class_='venue')
-                    location = location_elem.text.strip() if location_elem else None
-                    area = self.extract_area_from_location(location) if location else None
-                    
-                    image_elem = item.find('img')
-                    image_url = image_elem.get('src') if image_elem else None
-                    
+
+                    # Date in <div class="event-date-v3">
+                    date_elem = card.find('div', class_='event-date-v3')
+                    date_str = date_elem.text.strip() if date_elem else None
+                    event_date = self._parse_allevents_date(date_str) if date_str else None
+
+                    # Image in <img class="banner-image-v3">
+                    img_elem = card.find('img', class_='banner-image-v3')
+                    image_url = img_elem.get('src') if img_elem else None
+
+                    # Source event ID from data-eid on the interested button
+                    eid_elem = card.find('i', class_='event-interested-action')
+                    source_event_id = eid_elem.get('data-eid') if eid_elem else None
+
                     event = Event(
                         title=title,
                         event_date=event_date,
-                        location=location,
-                        area=area,
-                        link=link,
+                        link=href,
                         image_url=image_url,
+                        source_url=href,
+                        source_id=source_event_id,
+                        category="events",
                         status=EventStatus.DRAFT,
                     )
                     events.append(event)
-                    
+
                 except Exception as e:
-                    logger.error(f"Error parsing event: {e}")
+                    logger.error(f"Error parsing allevents card: {e}")
                     continue
-            
+
             return await self.save_events(events)
-            
+
         except Exception as e:
-            logger.error(f"Error crawling Allevents: {e}")
-            return CrawlResult(
-                events=events,
-                success=False,
-                error_message=str(e)
-            )
+            logger.error(f"Error crawling allevents.in: {e}")
+            return CrawlResult(events=events, success=False, error_message=str(e))
+
+    def _parse_allevents_date(self, text: str) -> Optional[datetime]:
+        """Parse date strings like 'Sun, 26 Apr . 05:00 AM' or 'Sat, 12 Apr'."""
+        text = text.replace('•', '.').replace('·', '.').strip()
+        # Try with time
+        for fmt in [
+            '%a, %d %b . %I:%M %p',
+            '%a, %d %b %Y . %I:%M %p',
+            '%a, %d %b',
+            '%a, %d %b %Y',
+        ]:
+            try:
+                dt = datetime.strptime(text, fmt)
+                # If year is 1900 (missing), assume current year
+                if dt.year == 1900:
+                    dt = dt.replace(year=datetime.now().year)
+                return dt
+            except ValueError:
+                continue
+        return self.parse_date(text)
 
 
-@register_crawler("bookmyshow")
-class BookMyShowCrawler(HTMLCrawler):
-    """Crawler for BookMyShow Hyderabad events"""
-    
-    @property
-    def source_name(self) -> str:
-        return "bookmyshow"
-    
-    async def _crawl_html(self, **kwargs) -> CrawlResult:
-        """
-        Crawl BookMyShow for Hyderabad events.
-        Note: BMS may require handling of dynamic content/JavaScript rendering.
-        """
-        events = []
-        
-        try:
-            # BMS explore page for Hyderabad
-            url = "https://in.bookmyshow.com/explore/home/hyderabad"
-            html = await self.fetch_page(url)
-            soup = self.soup(html)
-            
-            # BMS often loads content dynamically
-            # You might need to use Playwright or Selenium for this
-            # This is a basic example assuming static content
-            
-            event_cards = soup.find_all('div', class_='card-container')
-            
-            for card in event_cards:
-                try:
-                    title_elem = card.find('h4')
-                    title = title_elem.text.strip() if title_elem else None
-                    
-                    if not title:
-                        continue
-                    
-                    # BMS has specific event types - movies, events, sports
-                    # Filter for non-movie events
-                    event_type_elem = card.find('span', class_='event-type')
-                    event_type = event_type_elem.text.strip() if event_type_elem else "events"
-                    
-                    if event_type.lower() in ['movie', 'movies', 'film']:
-                        continue  # Skip movies
-                    
-                    link_elem = card.find('a', href=True)
-                    link = f"https://in.bookmyshow.com{link_elem['href']}" if link_elem else None
-                    
-                    venue_elem = card.find('span', class_='venue')
-                    venue = venue_elem.text.strip() if venue_elem else None
-                    area = self.extract_area_from_location(venue) if venue else None
-                    
-                    event = Event(
-                        title=title,
-                        venue=venue,
-                        area=area,
-                        link=link,
-                        category=event_type,
-                        status=EventStatus.DRAFT,
-                    )
-                    events.append(event)
-                    
-                except Exception as e:
-                    logger.error(f"Error parsing BMS card: {e}")
-                    continue
-            
-            return await self.save_events(events)
-            
-        except Exception as e:
-            logger.error(f"Error crawling BookMyShow: {e}")
-            return CrawlResult(
-                events=events,
-                success=False,
-                error_message=str(e)
-            )
-
+# ---------------------------------------------------------------------------
+# Meetup.com — extract Apollo state from __NEXT_DATA__ JSON
+# ---------------------------------------------------------------------------
 
 @register_crawler("meetup")
-class MeetupCrawler(APICrawler):
+class MeetupCrawler(HTMLCrawler):
     """
-    Crawler for Meetup.com events in Hyderabad.
-    Requires Meetup API key.
+    Crawler for Meetup.com Hyderabad events.
+    Meetup is a Next.js app that embeds Apollo state in __NEXT_DATA__.
+    No API key needed — scrapes the public search page.
     """
-    
+
     @property
     def source_name(self) -> str:
         return "meetup"
-    
-    async def _crawl_api(self, **kwargs) -> CrawlResult:
-        """Fetch Meetup events via API"""
-        events = []
-        api_key = kwargs.get('api_key')
-        
-        if not api_key:
-            return CrawlResult(
-                events=[],
-                success=False,
-                error_message="Meetup API key required"
-            )
-        
+
+    async def _crawl_html(self, **kwargs) -> CrawlResult:
+        events: List[Event] = []
+
+        config = await self.load_config()
+        if config and config.get('is_active') is False:
+            logger.info("Crawler 'meetup' is disabled, skipping")
+            return CrawlResult(events=[], success=True)
+
         try:
-            # Meetup GraphQL API
-            url = "https://api.meetup.com/gql"
-            
-            # GraphQL query for Hyderabad events
-            query = """
-            query($lat: Float!, $lon: Float!, $radius: Int!) {
-                findEventTypeEvents(
-                    filter: {lat: $lat, lon: $lon, radius: $radius}
-                    sort: {sortField: START_TIME, sortOrder: ASC}
-                ) {
-                    edges {
-                        node {
-                            title
-                            description
-                            eventUrl
-                            venue {
-                                name
-                                address
-                                city
-                            }
-                            dateTime
-                            endTime
-                            imageUrl
-                            fee {
-                                amount
-                                currency
-                            }
-                        }
-                    }
-                }
-            }
-            """
-            
-            # Hyderabad coordinates
-            variables = {
-                "lat": 17.4065,
-                "lon": 78.4772,
-                "radius": 25  # km
-            }
-            
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            
-            data = await self.fetch_api(
-                url, 
-                method='POST',
-                headers=headers,
-                json_data={'query': query, 'variables': variables}
+            url = (
+                config.get('url', 'https://www.meetup.com/find/?location=in--hyderabad&source=EVENTS')
+                if config
+                else 'https://www.meetup.com/find/?location=in--hyderabad&source=EVENTS'
             )
-            
-            # Parse events
-            edges = data.get('data', {}).get('findEventTypeEvents', {}).get('edges', [])
-            
-            for edge in edges:
-                node = edge.get('node', {})
-                
+            html = await self.fetch_page(url)
+
+            # Extract __NEXT_DATA__ JSON
+            match = re.search(
+                r'id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                html,
+                re.DOTALL,
+            )
+            if not match:
+                logger.warning("Could not find __NEXT_DATA__ on Meetup page")
+                return CrawlResult(events=[], success=False, error_message="No __NEXT_DATA__")
+
+            next_data = json.loads(match.group(1))
+            apollo = (
+                next_data.get('props', {})
+                .get('pageProps', {})
+                .get('__APOLLO_STATE__', {})
+            )
+
+            # Collect Event entries from Apollo cache
+            event_entries = {
+                k: v for k, v in apollo.items()
+                if k.startswith('Event:') and isinstance(v, dict) and 'title' in v
+            }
+            logger.info(f"Found {len(event_entries)} events in Meetup Apollo state")
+
+            for key, node in event_entries.items():
                 try:
-                    # Parse date
-                    date_str = node.get('dateTime', '')
-                    event_date = self.parse_date(date_str.replace('Z', '+00:00')) if date_str else None
-                    
-                    end_str = node.get('endTime', '')
-                    end_date = self.parse_date(end_str.replace('Z', '+00:00')) if end_str else None
-                    
-                    venue_data = node.get('venue', {})
-                    venue_name = venue_data.get('name', '')
-                    venue_address = venue_data.get('address', '')
-                    venue_city = venue_data.get('city', '')
-                    
-                    location_parts = [p for p in [venue_name, venue_address, venue_city] if p]
-                    location = ', '.join(location_parts)
-                    area = self.extract_area_from_location(location)
-                    
-                    # Price info
-                    fee = node.get('fee', {})
+                    title = node.get('title', '').strip()
+                    if not title:
+                        continue
+
+                    # Date
+                    dt_str = node.get('dateTime', '')
+                    event_date = None
+                    if dt_str:
+                        try:
+                            event_date = datetime.fromisoformat(dt_str)
+                        except ValueError:
+                            event_date = self.parse_date(dt_str)
+
+                    event_url = node.get('eventUrl', '')
+
+                    # Image: resolve __ref to PhotoInfo
+                    image_url = None
+                    photo_ref = node.get('featuredEventPhoto', {})
+                    if isinstance(photo_ref, dict) and '__ref' in photo_ref:
+                        photo = apollo.get(photo_ref['__ref'], {})
+                        image_url = photo.get('highResUrl') or photo.get('baseUrl')
+
+                    # Group name (venue proxy)
+                    group_ref = node.get('group', {})
+                    group_name = None
+                    if isinstance(group_ref, dict) and '__ref' in group_ref:
+                        group = apollo.get(group_ref['__ref'], {})
+                        group_name = group.get('name')
+
+                    # Venue info
+                    venue_ref = node.get('venue', {})
+                    venue_name = None
+                    venue_address = None
+                    if isinstance(venue_ref, dict) and '__ref' in venue_ref:
+                        venue = apollo.get(venue_ref['__ref'], {})
+                        venue_name = venue.get('name')
+                        venue_address = venue.get('address')
+
+                    location = venue_name or group_name
+                    area = self.extract_area_from_location(location) if location else None
+
+                    # Fee
+                    fee = node.get('feeSettings')
                     price = None
-                    if fee and fee.get('amount'):
+                    if isinstance(fee, dict) and fee.get('amount'):
                         price = f"{fee['amount']} {fee.get('currency', 'INR')}"
-                    
+
                     event = Event(
-                        title=node.get('title', 'Untitled'),
-                        description=node.get('description', '')[:500],
+                        title=title,
+                        description=(node.get('description', '') or '')[:500],
                         event_date=event_date,
-                        end_date=end_date,
                         location=location,
                         area=area,
-                        venue=venue_name,
+                        venue=venue_name or group_name,
                         price=price,
-                        link=node.get('eventUrl'),
-                        image_url=node.get('imageUrl'),
+                        link=event_url,
+                        image_url=image_url,
+                        source_url=event_url,
+                        source_id=str(node.get('id', '')),
                         category="meetup",
                         status=EventStatus.DRAFT,
                     )
                     events.append(event)
-                    
+
                 except Exception as e:
                     logger.error(f"Error parsing Meetup event: {e}")
                     continue
-            
+
             return await self.save_events(events)
-            
+
         except Exception as e:
             logger.error(f"Error crawling Meetup: {e}")
-            return CrawlResult(
-                events=events,
-                success=False,
-                error_message=str(e)
-            )
+            return CrawlResult(events=events, success=False, error_message=str(e))
 
 
-# Example manual event entry
-def create_manual_event(
-    title: str,
-    description: str,
-    event_date: datetime,
-    location: str,
-    db: Database
-) -> Event:
-    """Helper to create a manually entered event"""
-    event = Event(
-        title=title,
-        description=description,
-        event_date=event_date,
-        location=location,
-        area=None,  # Will be extracted
-        source="venue_manual",
-        source_id=f"manual-{datetime.now().timestamp()}",
-        status=EventStatus.DRAFT,
-    )
-    return event
+# ---------------------------------------------------------------------------
+# Insider.in — SPA, requires headless browser
+# ---------------------------------------------------------------------------
+
+@register_crawler("insider")
+class InsiderCrawler(HTMLCrawler):
+    """
+    Crawler for insider.in Hyderabad events.
+
+    Insider.in is a pure client-rendered SPA. Static HTML fetching returns
+    only a shell with <script> tags. A headless browser (Playwright/Selenium)
+    is required to render the page and extract events.
+
+    TODO: Implement with Playwright when headless browser support is added.
+    """
+
+    @property
+    def source_name(self) -> str:
+        return "insider"
+
+    async def _crawl_html(self, **kwargs) -> CrawlResult:
+        config = await self.load_config()
+        if config and config.get('is_active') is False:
+            logger.info("Crawler 'insider' is disabled, skipping")
+            return CrawlResult(events=[], success=True)
+
+        logger.warning(
+            "Insider.in is a client-rendered SPA. "
+            "Static crawling is not possible — needs headless browser."
+        )
+        return CrawlResult(
+            events=[],
+            success=False,
+            error_message="Insider.in requires headless browser (Playwright). Not yet implemented.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# BookMyShow — SPA, requires headless browser
+# ---------------------------------------------------------------------------
+
+@register_crawler("bookmyshow")
+class BookMyShowCrawler(HTMLCrawler):
+    """
+    Crawler for BookMyShow Hyderabad events.
+
+    BookMyShow is a client-rendered SPA. Static fetching returns no event
+    data. Requires headless browser.
+
+    TODO: Implement with Playwright when headless browser support is added.
+    """
+
+    @property
+    def source_name(self) -> str:
+        return "bookmyshow"
+
+    async def _crawl_html(self, **kwargs) -> CrawlResult:
+        config = await self.load_config()
+        if config and config.get('is_active') is False:
+            logger.info("Crawler 'bookmyshow' is disabled, skipping")
+            return CrawlResult(events=[], success=True)
+
+        logger.warning(
+            "BookMyShow is a client-rendered SPA. "
+            "Static crawling is not possible — needs headless browser."
+        )
+        return CrawlResult(
+            events=[],
+            success=False,
+            error_message="BookMyShow requires headless browser (Playwright). Not yet implemented.",
+        )
