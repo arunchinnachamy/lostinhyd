@@ -33,7 +33,10 @@ export function Dashboard() {
       : {};
 
     fetch("/api/crawl-logs/stats", { headers })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`Stats API returned ${r.status}`);
+        return r.json();
+      })
       .then(setStats)
       .catch(console.error);
 
@@ -81,7 +84,7 @@ export function Dashboard() {
                 color: (stats?.success_rate_7d ?? 0) >= 80 ? "#10b981" : "#ef4444",
               }}
             >
-              {stats ? `${stats.success_rate_7d}%` : "-"}
+              {stats && stats.success_rate_7d != null ? `${stats.success_rate_7d}%` : "-"}
             </div>
             <div>of crawl runs succeeded</div>
           </CardContent>

@@ -7,23 +7,24 @@ import pg from "pg";
 const { Client } = pg;
 
 export function createClient(env: Env): pg.Client {
-  const connectionString =
-    env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
+  const raw = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL;
 
-  if (!connectionString) {
+  if (!raw) {
     throw new Error(
       "No database connection available. Set HYPERDRIVE binding or DATABASE_URL.",
     );
   }
 
   // Hyperdrive handles SSL internally; for direct connections accept OVH certs.
-  const useDirectSsl =
-    !env.HYPERDRIVE?.connectionString &&
-    connectionString.includes("sslmode=require");
+  // Strip sslmode from URL to prevent pg-connection-string from overriding ssl config.
+  const isDirectSsl = !env.HYPERDRIVE?.connectionString && raw.includes("sslmode=");
+  const connectionString = isDirectSsl
+    ? raw.replace(/[?&]sslmode=[^&]*/, "")
+    : raw;
 
   return new Client({
     connectionString,
-    ssl: useDirectSsl ? { rejectUnauthorized: false } : undefined,
+    ssl: isDirectSsl ? { rejectUnauthorized: false } : false,
   });
 }
 
