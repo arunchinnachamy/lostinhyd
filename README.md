@@ -6,21 +6,28 @@
 
 ```
 lostinhyd/
-├── website/              # Astro-based SEO website for Cloudflare Pages
+├── website/              # Astro SSR website on Cloudflare Pages (D1 + caching)
 │   ├── src/
-│   │   ├── content/      # Newsletter, events, places content
-│   │   ├── pages/        # Website pages
-│   │   └── layouts/      # Page layouts
-│   └── dist/             # Build output (auto-generated)
-├── crawler/              # Event aggregation crawlers
-│   ├── base.py           # Base crawler classes
-│   ├── sources.py        # Website-specific crawlers
+│   │   ├── lib/db.js     # D1 database queries with cache layer
+│   │   ├── middleware/    # Cache-Control headers per route
+│   │   ├── pages/        # Server-rendered pages
+│   │   └── components/   # Astro components
+│   └── wrangler.toml     # Cloudflare Pages config
+├── admin/                # React Admin SPA on Cloudflare Pages
+│   ├── functions/api/    # Cloudflare Pages Functions (REST API)
+│   ├── functions/lib/    # Shared CRUD, DB connection, error handling
+│   ├── src/              # React Admin frontend
+│   ├── tests/            # Vitest integration tests
+│   └── wrangler.toml     # Cloudflare Pages config
+├── crawler/              # Python event crawlers
+│   ├── sources/          # Per-site crawlers (BookMyShow, Meetup, etc.)
+│   ├── core/             # Base crawler, HTTP client, data store
+│   ├── cleaning/         # Data cleaning and deduplication
 │   └── runner.py         # Main runner script
-├── utils/                # Utilities
-│   ├── db.py             # Database models & connection
-│   └── schema.sql        # PostgreSQL schema
+├── migrations/           # PostgreSQL schema migrations
+├── utils/                # Shared Python utilities
+│   └── db.py             # Database connection helper
 ├── editions/             # Legacy newsletter archive
-├── newsletters/          # Draft newsletter content
 ├── templates/            # Email/Newsletter templates
 └── assets/               # Images, logos, etc.
 ```
@@ -33,6 +40,16 @@ lostinhyd/
 cd website
 npm install
 npm run dev        # Local development
+npm run build      # Production build
+```
+
+### Admin Panel (React Admin + Cloudflare)
+
+```bash
+cd admin
+npm install
+npm run dev        # Local development (needs DATABASE_URL in .dev.vars)
+npm test           # Run integration tests (needs DATABASE_URL)
 npm run build      # Production build
 ```
 
@@ -61,18 +78,25 @@ python -m crawler.runner --list
 3. Build command: `cd website && npm run build`
 4. Output directory: `website/dist`
 
-Or use GitHub Actions (already configured in `.github/workflows/deploy.yml`)
+Or use GitHub Actions (configured in `.github/workflows/deploy.yml`).
+
+### Cloudflare Pages (Admin)
+
+1. Push to GitHub
+2. Connect to Cloudflare Pages (project: `lostinhyd-admin`)
+3. Build command: `cd admin && npm run build`
+4. Output directory: `admin/dist`
+5. Set secrets: `ADMIN_TOKEN`, `DATABASE_URL`
+6. Optional: Set up Hyperdrive with `bash admin/scripts/setup-hyperdrive.sh`
 
 ### Environment Variables
 
-For crawlers, you'll need:
 ```bash
+# Required for crawlers and admin
 export DATABASE_URL="postgresql://user:pass@host:port/lostinhyd"
-```
 
-Optional:
-```bash
-export MEETUP_API_KEY="your_key_here"  # For Meetup crawler
+# Admin panel
+export ADMIN_TOKEN="your-admin-bearer-token"
 ```
 
 ## Contributing
