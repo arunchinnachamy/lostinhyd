@@ -1,0 +1,11 @@
+name = "lostinhyd-admin"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# Hyperdrive binding for PostgreSQL connection pooling.
+# Create with: npx wrangler hyperdrive create lostinhyd-db --connection-string="postgresql://..."
+# Then paste the ID below.
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "<your-hyperdrive-config-id>"
