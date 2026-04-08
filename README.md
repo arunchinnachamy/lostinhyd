@@ -6,104 +6,146 @@
 
 ```
 lostinhyd/
-├── website/              # Astro SSR website on Cloudflare Pages (D1 + caching)
+├── docker-compose.yml    # Docker orchestration for all services
+├── nginx/                # NGINX reverse proxy
+│   ├── nginx.conf        # Route configuration
+│   └── Dockerfile
+├── website/              # Astro SSR website (PostgreSQL)
 │   ├── src/
-│   │   ├── lib/db.js     # D1 database queries with cache layer
-│   │   ├── middleware/    # Cache-Control headers per route
+│   │   ├── lib/db.js     # PostgreSQL queries
 │   │   ├── pages/        # Server-rendered pages
 │   │   └── components/   # Astro components
-│   └── wrangler.toml     # Cloudflare Pages config
-├── admin/                # React Admin SPA on Cloudflare Pages
-│   ├── functions/api/    # Cloudflare Pages Functions (REST API)
-│   ├── functions/lib/    # Shared CRUD, DB connection, error handling
-│   ├── src/              # React Admin frontend
-│   ├── tests/            # Vitest integration tests
-│   └── wrangler.toml     # Cloudflare Pages config
+│   └── Dockerfile
+├── admin/                # React Admin + Express API
+│   ├── src/
+│   │   ├── server.js     # Express API server
+│   │   ├── db.js         # Database connection
+│   │   ├── lib/          # CRUD helpers, errors
+│   │   └── ...           # React Admin frontend
+│   └── Dockerfile
 ├── crawler/              # Python event crawlers
-│   ├── sources/          # Per-site crawlers (BookMyShow, Meetup, etc.)
-│   ├── core/             # Base crawler, HTTP client, data store
-│   ├── cleaning/         # Data cleaning and deduplication
-│   └── runner.py         # Main runner script
+│   ├── sources/          # Per-site crawlers
+│   ├── core/             # Base crawler, HTTP client
+│   └── Dockerfile
 ├── migrations/           # PostgreSQL schema migrations
-├── utils/                # Shared Python utilities
-│   └── db.py             # Database connection helper
-├── editions/             # Legacy newsletter archive
-├── templates/            # Email/Newsletter templates
-└── assets/               # Images, logos, etc.
+└── DEPLOYMENT.md         # Docker deployment guide
 ```
 
-## Quick Start
+## Quick Start (Docker)
 
-### Website (Astro + Cloudflare)
+### 1. Configure Environment
+
+```bash
+# Copy and edit environment file
+cp .env.example .env
+# Edit .env with your DATABASE_URL and ADMIN_TOKEN
+```
+
+### 2. Start All Services
+
+```bash
+# Build and start
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Check health
+curl http://localhost/nginx-health
+curl http://localhost/health
+curl http://localhost/admin/health
+```
+
+### 3. Access the Services
+
+- **Website**: http://localhost/
+- **Admin Panel**: http://localhost/admin/
+
+### 4. Run the Crawler
+
+```bash
+# Crawl all sources
+docker compose --profile crawler run --rm crawler
+
+# Crawl specific source
+docker compose --profile crawler run --rm crawler python -m crawler.cli crawl --source bookmyshow
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment instructions.
+
+## Development
+
+### Website (Astro)
 
 ```bash
 cd website
 npm install
 npm run dev        # Local development
-npm run build      # Production build
 ```
 
-### Admin Panel (React Admin + Cloudflare)
+### Admin (Express API + React)
 
 ```bash
 cd admin
 npm install
-npm run dev        # Local development (needs DATABASE_URL in .dev.vars)
-npm test           # Run integration tests (needs DATABASE_URL)
-npm run build      # Production build
+
+# Terminal 1: Run API server
+npm run server   # Express API on port 3001
+
+# Terminal 2: Run React dev server
+npm run dev      # Vite dev server (proxies /api to Express)
 ```
 
-### Event Crawlers
+### Crawlers
 
 ```bash
-# Set up database first
-# (You'll provide credentials, then we'll connect)
+cd crawler
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 
-# Run specific crawler
-python -m crawler.runner --source insider
-
-# Run all crawlers
-python -m crawler.runner --all
-
-# List available crawlers
-python -m crawler.runner --list
+# Run crawls
+python -m crawler.cli crawl
+python -m crawler.cli clean
 ```
 
-## Deployment
+## Architecture
 
-### Cloudflare Pages (Website)
+```
+Cloudflare (SSL termination)
+    |
+    v
+NGINX (port 80/443)
+    |---> Website (Astro SSR, port 3000)
+    |---> Admin (Express + React, port 3001)
+    
+PostgreSQL (OVH Managed)
+    ^
+    |
+Crawler (on-demand Docker runs)
+```
 
-1. Push to GitHub
-2. Connect to Cloudflare Pages
-3. Build command: `cd website && npm run build`
-4. Output directory: `website/dist`
+- **Website**: Astro SSR with PostgreSQL (no caching layer)
+- **Admin**: Express API serving React Admin SPA
+- **Crawler**: Python scripts running on-demand
+- **Database**: OVH Managed PostgreSQL (shared by all services)
 
-Or use GitHub Actions (configured in `.github/workflows/deploy.yml`).
-
-### Cloudflare Pages (Admin)
-
-1. Push to GitHub
-2. Connect to Cloudflare Pages (project: `lostinhyd-admin`)
-3. Build command: `cd admin && npm run build`
-4. Output directory: `admin/dist`
-5. Set secrets: `ADMIN_TOKEN`, `DATABASE_URL`
-6. Optional: Set up Hyperdrive with `bash admin/scripts/setup-hyperdrive.sh`
-
-### Environment Variables
+## Environment Variables
 
 ```bash
-# Required for crawlers and admin
-export DATABASE_URL="postgresql://user:pass@host:port/lostinhyd"
+# Required for all services
+DATABASE_URL="postgresql://user:pass@host:port/lostinhyd?sslmode=require"
 
-# Admin panel
-export ADMIN_TOKEN="your-admin-bearer-token"
+# Admin panel authentication
+ADMIN_TOKEN="your-secure-random-token"
+
+# Optional: Browserless for JS-heavy sites
+BROWSERLESS_TOKEN=""
 ```
 
-## Contributing
+## Previous Architecture
 
-See [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## License
-
-Content is © Lost in Hyd. All rights reserved.
-Code is MIT licensed.
+This project was previously deployed on Cloudflare Pages with D1 database. The migration to Docker was completed to:
+- Consolidate all services locally for easier monitoring and debugging
+- Use PostgreSQL as the single source of truth (eliminating D1 sync issues)
+- Enable the local Hermes agent to manage deployment and operations

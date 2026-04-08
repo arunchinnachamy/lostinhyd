@@ -1,0 +1,58 @@
+version: "3.8"
+
+services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      website:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+    restart: unless-stopped
+
+  website:
+    build:
+      context: ./website
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SITE_URL=${SITE_URL:-http://localhost}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - SITE_URL=${SITE_URL:-http://localhost}
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  crawler:
+    build:
+      context: ./crawler
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BROWSERLESS_TOKEN=${BROWSERLESS_TOKEN:-}
+    profiles:
+      - crawler
+    # This service doesn't auto-start; run manually with:
+    # docker compose --profile crawler run --rm crawler

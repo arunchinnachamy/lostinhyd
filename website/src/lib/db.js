@@ -1,193 +1,206 @@
-// D1 Database utilities with caching for Cloudflare Pages
-// Access D1 via Astro.locals.runtime.env.DB binding
+// PostgreSQL Database utilities for Lost in Hyd
+// Connects to OVH managed PostgreSQL
 
-const CACHE_TTL = 2 * 60 * 60; // 2 hours in seconds
+import pg from 'pg';
 
-// Helper to fetch with caching
-async function fetchWithCache(caches, cacheKey, fetchFn, ttl = CACHE_TTL) {
-  // Try to get from cache first
-  if (caches) {
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      return await cached.json();
-    }
+const { Pool } = pg;
+
+// Create a connection pool
+function createPool() {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL environment variable is required');
   }
-  
-  // Fetch fresh data
-  const data = await fetchFn();
-  
-  // Store in cache
-  if (caches && data) {
-    const cache = caches.default;
-    const response = new Response(JSON.stringify(data), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': `max-age=${ttl}`
-      }
-    });
-    await cache.put(cacheKey, response);
-  }
-  
-  return data;
+
+  const isOvh = databaseUrl.includes('ovh.net');
+  const connectionString = isOvh
+    ? databaseUrl.replace(/[?&]sslmode=[^&]*/, '')
+    : databaseUrl;
+
+  return new Pool({
+    connectionString,
+    ssl: isOvh ? { rejectUnauthorized: false } : false,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
 }
 
-// Get database from environment
-function getDB(context) {
-  const env = context?.locals?.runtime?.env || {};
-  return env.DB;
+let pool = null;
+
+function getPool() {
+  if (!pool) {
+    pool = createPool();
+  }
+  return pool;
+}
+
+// Execute a query with retry logic
+async function queryWithRetry(sql, params, retries = 3) {
+  const pool = getPool();
+  let lastError;
+
+  for (let i = 0; i < retries; i++) {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query('SET search_path TO lostinhyd, public');
+      const result = await client.query(sql, params);
+      return result;
+    } catch (error) {
+      lastError = error;
+      console.error(`Query attempt ${i + 1} failed:`, error.message);
+      
+      // Exponential backoff
+      if (i < retries - 1) {
+        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+      }
+    } finally {
+      if (client) {
+        client.release();
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 // Get all published events
 export async function getEvents(context, limit = 50, offset = 0) {
-  const db = getDB(context);
-  if (!db) return [];
-  
-  const cacheKey = `events:list:${limit}:${offset}`;
-  const caches = context?.runtime?.caches;
-  
-  return fetchWithCache(caches, cacheKey, async () => {
-    const { results } = await db.prepare(`
+  try {
+    const result = await queryWithRetry(`
       SELECT 
         e.*,
         v.name as venue_name_full,
         v.area,
         v.latitude,
         v.longitude,
-        (SELECT GROUP_CONCAT(c.name) 
+        (SELECT string_agg(c.name, ',') 
          FROM event_categories ec 
          JOIN categories c ON ec.category_id = c.id 
          WHERE ec.event_id = e.id) as categories
       FROM events e
       LEFT JOIN venues v ON e.venue_id = v.id
       WHERE e.status = 'published'
-        AND (e.end_date IS NULL OR e.end_date >= date('now'))
-      GROUP BY e.id
+        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
       ORDER BY e.start_date ASC, e.start_time ASC
-      LIMIT ? OFFSET ?
-    `).bind(limit, offset).all();
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
     
-    return results || [];
-  });
+    return result.rows || [];
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    return [];
+  }
 }
 
 // Get featured events
 export async function getFeaturedEvents(context, limit = 6) {
-  const db = getDB(context);
-  if (!db) return [];
-  
-  const cacheKey = `events:featured:${limit}`;
-  const caches = context?.runtime?.caches;
-  
-  return fetchWithCache(caches, cacheKey, async () => {
-    const { results } = await db.prepare(`
+  try {
+    const result = await queryWithRetry(`
       SELECT 
         e.*,
         v.name as venue_name_full,
         v.area,
-        (SELECT GROUP_CONCAT(c.name) 
+        (SELECT string_agg(c.name, ',') 
          FROM event_categories ec 
          JOIN categories c ON ec.category_id = c.id 
          WHERE ec.event_id = e.id) as categories
       FROM events e
       LEFT JOIN venues v ON e.venue_id = v.id
       WHERE e.status = 'published'
-        AND e.is_featured = 1
-        AND (e.end_date IS NULL OR e.end_date >= date('now'))
-      GROUP BY e.id
+        AND e.is_featured = true
+        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
       ORDER BY e.start_date ASC
-      LIMIT ?
-    `).bind(limit).all();
+      LIMIT $1
+    `, [limit]);
     
-    return results || [];
-  });
+    return result.rows || [];
+  } catch (error) {
+    console.error('Error fetching featured events:', error);
+    return [];
+  }
 }
 
 // Get single event by slug
 export async function getEventBySlug(context, slug) {
-  const db = getDB(context);
-  if (!db) return null;
-  
-  // Don't cache single event pages (may change frequently)
-  const { results } = await db.prepare(`
-    SELECT 
-      e.*,
-      v.name as venue_name_full,
-      v.address as venue_address_full,
-      v.area,
-      v.city,
-      v.latitude,
-      v.longitude,
-      v.phone as venue_phone,
-      v.website as venue_website,
-      (SELECT GROUP_CONCAT(c.name) 
-       FROM event_categories ec 
-       JOIN categories c ON ec.category_id = c.id 
-       WHERE ec.event_id = e.id) as categories
-    FROM events e
-    LEFT JOIN venues v ON e.venue_id = v.id
-    WHERE e.slug = ?
-      AND e.status = 'published'
-    LIMIT 1
-  `).bind(slug).all();
-  
-  return results?.[0] || null;
+  try {
+    const result = await queryWithRetry(`
+      SELECT 
+        e.*,
+        v.name as venue_name_full,
+        v.address as venue_address_full,
+        v.area,
+        v.city,
+        v.latitude,
+        v.longitude,
+        v.phone as venue_phone,
+        v.website as venue_website,
+        (SELECT string_agg(c.name, ',') 
+         FROM event_categories ec 
+         JOIN categories c ON ec.category_id = c.id 
+         WHERE ec.event_id = e.id) as categories
+      FROM events e
+      LEFT JOIN venues v ON e.venue_id = v.id
+      WHERE e.slug = $1
+        AND e.status = 'published'
+      LIMIT 1
+    `, [slug]);
+    
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error fetching event by slug:', error);
+    return null;
+  }
 }
 
 // Get all categories
 export async function getCategories(context) {
-  const db = getDB(context);
-  if (!db) return [];
-  
-  const cacheKey = 'categories:all';
-  const caches = context?.runtime?.caches;
-  
-  return fetchWithCache(caches, cacheKey, async () => {
-    const { results } = await db.prepare(`
+  try {
+    const result = await queryWithRetry(`
       SELECT 
         c.*,
         COUNT(e.id) as event_count
       FROM categories c
       LEFT JOIN event_categories ec ON c.id = ec.category_id
       LEFT JOIN events e ON ec.event_id = e.id AND e.status = 'published'
-      WHERE c.is_active = 1
+      WHERE c.is_active = true
       GROUP BY c.id
       ORDER BY c.display_order ASC, c.name ASC
-    `).all();
+    `, []);
     
-    return results || [];
-  }, 4 * 60 * 60); // Cache categories for 4 hours
+    return result.rows || [];
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
 }
 
 // Get category by slug
 export async function getCategoryBySlug(context, slug) {
-  const db = getDB(context);
-  if (!db) return null;
-  
-  const { results } = await db.prepare(`
-    SELECT * FROM categories
-    WHERE slug = ? AND is_active = 1
-    LIMIT 1
-  `).bind(slug).all();
-  
-  return results?.[0] || null;
+  try {
+    const result = await queryWithRetry(`
+      SELECT * FROM categories
+      WHERE slug = $1 AND is_active = true
+      LIMIT 1
+    `, [slug]);
+    
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error fetching category by slug:', error);
+    return null;
+  }
 }
 
 // Get events by category
 export async function getEventsByCategory(context, categorySlug, limit = 50) {
-  const db = getDB(context);
-  if (!db) return [];
-  
-  const cacheKey = `events:category:${categorySlug}:${limit}`;
-  const caches = context?.runtime?.caches;
-  
-  return fetchWithCache(caches, cacheKey, async () => {
-    const { results } = await db.prepare(`
+  try {
+    const result = await queryWithRetry(`
       SELECT 
         e.*,
         v.name as venue_name_full,
         v.area,
-        (SELECT GROUP_CONCAT(c2.name) 
+        (SELECT string_agg(c2.name, ',') 
          FROM event_categories ec2 
          JOIN categories c2 ON ec2.category_id = c2.id 
          WHERE ec2.event_id = e.id) as categories
@@ -195,39 +208,42 @@ export async function getEventsByCategory(context, categorySlug, limit = 50) {
       INNER JOIN event_categories ec ON e.id = ec.event_id
       INNER JOIN categories c ON ec.category_id = c.id
       LEFT JOIN venues v ON e.venue_id = v.id
-      WHERE c.slug = ?
+      WHERE c.slug = $1
         AND e.status = 'published'
-        AND (e.end_date IS NULL OR e.end_date >= date('now'))
-      GROUP BY e.id
+        AND (e.end_date IS NULL OR e.end_date >= CURRENT_DATE)
       ORDER BY e.start_date ASC, e.start_time ASC
-      LIMIT ?
-    `).bind(categorySlug, limit).all();
+      LIMIT $2
+    `, [categorySlug, limit]);
     
-    return results || [];
-  });
+    return result.rows || [];
+  } catch (error) {
+    console.error('Error fetching events by category:', error);
+    return [];
+  }
 }
 
 // Get all active sources
 export async function getSources(context) {
-  const db = getDB(context);
-  if (!db) return [];
-  
-  const { results } = await db.prepare(`
-    SELECT * FROM sources
-    WHERE is_active = 1
-    ORDER BY name ASC
-  `).all();
-  
-  return results || [];
+  try {
+    const result = await queryWithRetry(`
+      SELECT * FROM sources
+      WHERE is_active = true
+      ORDER BY name ASC
+    `, []);
+    
+    return result.rows || [];
+  } catch (error) {
+    console.error('Error fetching sources:', error);
+    return [];
+  }
 }
 
-// Utility: Purge cache for specific patterns
-export async function purgeCache(context, pattern) {
-  const caches = context?.runtime?.caches;
-  if (!caches) return;
-  
-  const cache = caches.default;
-  // Note: Cloudflare Cache API doesn't support pattern matching
-  // For full purge, use Cloudflare API or Purge Everything in dashboard
-  // This is a placeholder for future implementation
+// Health check endpoint
+export async function healthCheck() {
+  try {
+    await queryWithRetry('SELECT 1', []);
+    return { status: 'healthy', database: 'connected' };
+  } catch (error) {
+    return { status: 'unhealthy', database: 'disconnected', error: error.message };
+  }
 }

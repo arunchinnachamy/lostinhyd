@@ -1,17 +1,13 @@
 import { defineConfig } from 'astro/config';
-import cloudflare from '@astrojs/cloudflare';
+import node from '@astrojs/node';
 
 // https://astro.build/config
 export default defineConfig({
-  output: 'static',
-  adapter: cloudflare({
-    mode: 'directory',
-    functionPerRoute: true,
-    runtime: {
-      mode: 'local'
-    }
+  output: 'server',
+  adapter: node({
+    mode: 'standalone'
   }),
-  site: 'https://lostinhyd.pages.dev',
+  site: process.env.SITE_URL || 'http://localhost',
   trailingSlash: 'always',
   build: {
     format: 'directory'

@@ -4,11 +4,10 @@
  *
  * Matches the real lostinhyd schema (integer IDs, actual column names).
  */
-import type pg from "pg";
 import { badRequest, notFound } from "./errors.js";
 
 /** Valid sortable columns per table. Prevents SQL injection via sort params. */
-const SORTABLE_COLUMNS: Record<string, Set<string>> = {
+const SORTABLE_COLUMNS = {
   events: new Set([
     "id", "title", "start_date", "end_date", "venue_name", "status",
     "is_featured", "organizer", "created_at", "updated_at",
@@ -27,38 +26,26 @@ const SORTABLE_COLUMNS: Record<string, Set<string>> = {
 };
 
 /** Valid filter columns per table. */
-const FILTERABLE_COLUMNS: Record<string, Set<string>> = {
+const FILTERABLE_COLUMNS = {
   events: new Set(["status", "source_id", "venue_id", "is_featured", "is_free"]),
   venues: new Set(["area", "city"]),
   sources: new Set(["is_active", "source_type"]),
   crawl_logs: new Set(["status", "source_id"]),
 };
 
-interface ListParams {
-  _sort?: string;
-  _order?: string;
-  _start?: string;
-  _end?: string;
-  [key: string]: string | undefined;
-}
-
 /**
  * List records with filtering, sorting, and pagination.
  * Compatible with ra-data-simple-rest conventions.
  */
-export async function listRecords(
-  client: pg.Client,
-  table: string,
-  params: ListParams,
-): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+export async function listRecords(client, table, params) {
   const sortable = SORTABLE_COLUMNS[table];
   const filterable = FILTERABLE_COLUMNS[table];
   if (!sortable || !filterable) {
     throw badRequest(`Unknown table: ${table}`);
   }
 
-  const conditions: string[] = [];
-  const values: unknown[] = [];
+  const conditions = [];
+  const values = [];
   let paramIdx = 1;
 
   // Apply filters from query params
@@ -114,11 +101,7 @@ export async function listRecords(
 /**
  * Get a single record by integer ID.
  */
-export async function getRecord(
-  client: pg.Client,
-  table: string,
-  id: string | number,
-): Promise<Record<string, unknown>> {
+export async function getRecord(client, table, id) {
   const result = await client.query(
     `SELECT * FROM ${table} WHERE id = $1`,
     [id],
@@ -132,7 +115,7 @@ export async function getRecord(
 }
 
 /** Columns that can be updated via PUT for each table. */
-const UPDATABLE_COLUMNS: Record<string, string[]> = {
+const UPDATABLE_COLUMNS = {
   events: [
     "title", "slug", "description", "content", "start_date", "start_time",
     "end_date", "end_time", "timezone", "is_recurring", "recurrence_pattern",
@@ -153,19 +136,14 @@ const UPDATABLE_COLUMNS: Record<string, string[]> = {
 /**
  * Update a record by integer ID. Only updates whitelisted columns present in the body.
  */
-export async function updateRecord(
-  client: pg.Client,
-  table: string,
-  id: string | number,
-  data: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
+export async function updateRecord(client, table, id, data) {
   const allowed = UPDATABLE_COLUMNS[table];
   if (!allowed) {
     throw badRequest(`Updates not supported for table: ${table}`);
   }
 
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
+  const setClauses = [];
+  const values = [];
   let paramIdx = 1;
 
   for (const col of allowed) {
@@ -201,12 +179,7 @@ export async function updateRecord(
 /**
  * Update the status of a single event.
  */
-export async function updateStatus(
-  client: pg.Client,
-  table: string,
-  id: string | number,
-  status: string,
-): Promise<Record<string, unknown>> {
+export async function updateStatus(client, table, id, status) {
   const validStatuses = ["draft", "published", "rejected", "archived"];
   if (!validStatuses.includes(status)) {
     throw badRequest(`Invalid status: ${status}. Must be one of: ${validStatuses.join(", ")}`);
@@ -228,12 +201,7 @@ export async function updateStatus(
  * Batch update status for multiple records.
  * Returns count of updated records.
  */
-export async function batchUpdateStatus(
-  client: pg.Client,
-  table: string,
-  ids: (string | number)[],
-  status: string,
-): Promise<{ updated: number }> {
+export async function batchUpdateStatus(client, table, ids, status) {
   if (!ids || ids.length === 0) {
     throw badRequest("ids array is required and must not be empty");
   }

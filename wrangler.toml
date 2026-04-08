@@ -1,5 +1,0 @@
-name = "lostinhyd"
-compatibility_date = "2024-01-01"
-
-# Run from website directory
-# cd website && npx wrangler pages deploy dist

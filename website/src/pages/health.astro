@@ -1,0 +1,15 @@
+---
+export const prerender = false;
+
+import { healthCheck } from '../lib/db.js';
+
+const health = await healthCheck();
+const status = health.status === 'healthy' ? 200 : 503;
+
+return new Response(JSON.stringify(health, null, 2), {
+  status,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+---
